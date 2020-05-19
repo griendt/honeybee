@@ -1,8 +1,6 @@
-use core::panicking::panic_fmt;
 use std::process::exit;
 
-use crate::io::error;
-use crate::lexer::State::Operator;
+use crate::io::{error, warn};
 use crate::token::{Token, TokenType};
 
 const ENCAPSULATORS_LEFT: [char; 4] = [
@@ -34,6 +32,8 @@ const SEPARATORS: [char; 2] = [
 enum State {
     // Start of file
     None,
+    // Parse error
+    Error,
     // Name of a variable or a function
     Identifier,
     // Symbols that represent operators
@@ -110,7 +110,13 @@ impl Lexer {
         // still in the register and clear the inner state.
         // Note that we will retain the list of tokens for use.
         self.end_token();
-        self.state = State::None;
+
+        if self.state != State::Error {
+            // We will keep the error state so that the caller can check
+            // whether we encountered any lexing errors during parsing.
+            // If lexing was successful, the state will be cleared properly.
+            self.state = State::None;
+        }
     }
 
     fn end_token(&mut self) {
@@ -123,11 +129,14 @@ impl Lexer {
 
             // For each state, we must determine what type of token
             // we should add as the end the current token.
-            _ => unimplemented!("{:?}", self.state),
+            _ => {
+                error(format!("Unsupported state: {:?}", self.state).as_str());
+                TokenType::Error
+            }
         };
 
-        if token_type != TokenType::None {
-            // Any token that has a type other than None, will be appended to the list.
+        if ![TokenType::None, TokenType::Error].contains(&token_type) {
+            // Any token that has a type other than None or Error, will be appended to the list.
             // If we wish to add a null token, use the Null token type instead.
             let token = Token { data_type: token_type, value: self.register.clone() };
             self.tokens.push(token);
@@ -168,8 +177,11 @@ impl Lexer {
             '"' => State::String,
             ':' => State::Colon,
             _ => {
-                error(format!("Invalid character '{}'", character).as_str());
-                exit(1);
+                error(format!("Unsupported character: '{}'\n  Setting state to {:?}",
+                              character,
+                              State::Error).as_str()
+                );
+                State::Error
             }
         }
     }
@@ -184,7 +196,7 @@ impl Lexer {
                 // as > so that we can implement arrows like -> and =>. We should add those
                 // conditionals here rather than just going to the default state.
                 self.get_default_state(character)
-            },
+            }
             State::Numeric => {
                 if character == '.' {
                     // We are dealing with a decimal dot. We must make sure to parse this dot
@@ -193,7 +205,7 @@ impl Lexer {
                 }
 
                 self.get_default_state(character)
-            },
+            }
             State::DecimalSeparator | State::NumericDecimal => {
                 if character.is_numeric() {
                     // We are dealing with the decimal part of a number.
@@ -203,8 +215,73 @@ impl Lexer {
                 }
 
                 self.get_default_state(character)
-            },
+            }
+            State::Error => State::Error, // Propagate errors, do not try to recover
             _ => unimplemented!("{:?}", self.state)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn parse(lexer: &mut Lexer, code: &str) {
+        for character in code.chars() {
+            lexer.lex(character);
+        }
+        lexer.finish();
+    }
+
+    #[test]
+    fn it_lexes_a_string() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "foo");
+
+        assert_eq!(lexer.state, State::None);
+        assert_eq!(lexer.tokens.len(), 1);
+        assert_eq!(lexer.tokens[0].value, "foo");
+        assert_eq!(lexer.tokens[0].data_type, TokenType::Identifier);
+    }
+
+    #[test]
+    fn it_lexes_an_integer() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "3");
+
+        assert_eq!(lexer.state, State::None);
+        assert_eq!(lexer.tokens.len(), 1);
+        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].value, "3");
+    }
+
+    #[test]
+    fn it_lexes_a_float_without_decimal_part() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "2.");
+
+        assert_eq!(lexer.state, State::None);
+        assert_eq!(lexer.tokens.len(), 1);
+        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].value, "2.");
+    }
+
+    #[test]
+    fn it_lexes_a_float_with_decimal_part() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "2.34");
+
+        assert_eq!(lexer.state, State::None);
+        assert_eq!(lexer.tokens.len(), 1);
+        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].value, "2.34");
+    }
+
+    #[test]
+    fn it_panics_at_malformed_number() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "2.345.6");
+
+        assert_eq!(lexer.state, State::Error);
     }
 }

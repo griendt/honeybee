@@ -11,6 +11,7 @@ pub enum TokenType {
     String,       // A string literal
     Numeric,      // An integer, float or decimal literal
     Atom,         // An atom
+    Error,        // Something bad happened (parse error)
 }
 impl fmt::Display for TokenType {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
