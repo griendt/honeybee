@@ -1,3 +1,4 @@
+#![feature(core_panic)]
 
 use std::env;
 use std::fs;
