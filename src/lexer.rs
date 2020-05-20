@@ -70,7 +70,7 @@ pub struct Lexer {
     register: String,
 
     // Metadata for error messages and debugging
-    file: Option<String>,
+    pub file: Option<String>,
     line: u32,
     column: u32,
 }

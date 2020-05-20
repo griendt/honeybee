@@ -1,15 +1,14 @@
 #![feature(core_panic)]
 
 use std::env;
-use std::fs;
 
 mod parser;
 mod lexer;
 mod io;
 mod token;
 
-fn run(code: String) {
-    parser::parse(code);
+fn run(file: String) {
+    parser::parse(file);
 }
 
 fn main() {
@@ -23,10 +22,10 @@ fn main() {
             continue;
         }
 
-        let contents = fs::read_to_string(arg)
-            .expect("Something went wrong reading the file");
+        // let contents = fs::read_to_string(arg)
+        //     .expect("Something went wrong reading the file");
 
-        run(contents);
+        run(arg);
     }
 
 }
