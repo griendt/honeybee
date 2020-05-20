@@ -15,10 +15,11 @@ const ENCAPSULATORS_RIGHT: [char; 4] = [
     '>',
 ];
 
-const OPERATORS: [char; 3] = [
+const OPERATORS: [char; 4] = [
     '=',
     '!',
     '-',
+    '+',
 ];
 
 const SEPARATORS: [char; 2] = [
@@ -71,6 +72,8 @@ pub struct Lexer {
     pub file: Option<String>,
     line: u32,
     column: u32,
+
+    verbose: bool,
 }
 
 impl Lexer {
@@ -83,6 +86,7 @@ impl Lexer {
             file: None,
             line: 1,
             column: 1,
+            verbose: true,
         }
     }
 
@@ -135,7 +139,8 @@ impl Lexer {
         }
     }
 
-    fn print_error(&self, character: char) {
+    fn print_error(&self, character: char) -> () {
+        if !self.verbose { return; }
         error(format!("Syntax error at line {}, column {}{}: '{}'",
             self.line,
             self.column,
@@ -154,6 +159,7 @@ impl Lexer {
             State::Numeric | State::NumericDecimal | State::DecimalSeparator => TokenType::Numeric,
             State::Identifier => TokenType::Identifier,
             State::None => TokenType::None,
+            State::Error => TokenType::Error,
 
             // For each state, we must determine what type of token
             // we should add as the end the current token.
@@ -313,8 +319,27 @@ mod test {
     #[test]
     fn it_errors_at_malformed_number() {
         let mut lexer = Lexer::new();
+        lexer.verbose = false; // Do not print the syntax error message to stdout during testing
         parse(&mut lexer, "2.345.6");
 
         assert_eq!(lexer.state, State::Error);
+    }
+
+    #[test]
+    fn it_lexes_a_simple_arithmetic_expression() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "1 + 2 = 3");
+        assert_eq!(lexer.state,  State::None);
+        assert_eq!(lexer.tokens.len(), 5);
+        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].value, "1");
+        assert_eq!(lexer.tokens[1].data_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[1].value, "+");
+        assert_eq!(lexer.tokens[2].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[2].value, "2");
+        assert_eq!(lexer.tokens[3].data_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[3].value, "=");
+        assert_eq!(lexer.tokens[4].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[4].value, "3");
     }
 }

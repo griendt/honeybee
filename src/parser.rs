@@ -16,5 +16,5 @@ pub fn parse(file: String) {
     }
 
     lexer.finish();
-    println!("{:?}", lexer);
+    println!("{:#?}", lexer);
 }
