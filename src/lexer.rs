@@ -1,4 +1,4 @@
-use crate::io::error;
+use crate::io::{error, warn};
 use crate::token::{Token, TokenType};
 
 const ENCAPSULATORS_LEFT: [char; 4] = [
@@ -15,11 +15,12 @@ const ENCAPSULATORS_RIGHT: [char; 4] = [
     '>',
 ];
 
-const OPERATORS: [char; 4] = [
+const OPERATORS: [char; 5] = [
     '=',
     '!',
     '-',
     '+',
+    '/',
 ];
 
 const SEPARATORS: [char; 2] = [
@@ -93,8 +94,8 @@ impl Lexer {
     pub fn lex(&mut self, character: char) -> () {
         let new_state = self.get_next_state(character);
 
-        if new_state == self.state
-            || self.state == State::None
+        if (new_state == self.state && self.state != State::None)
+            || (self.state == State::None && new_state != State::None)
             || (self.state == State::Numeric && new_state == State::DecimalSeparator)
             || (self.state == State::DecimalSeparator && new_state == State::NumericDecimal)
         {
@@ -214,7 +215,7 @@ impl Lexer {
         }
 
         match character {
-            ' ' => State::None,
+            ' ' | '\n' | '\r' => State::None,
             '\'' => State::Character,
             '"' => State::String,
             ':' => State::Colon,
