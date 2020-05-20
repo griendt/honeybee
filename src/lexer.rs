@@ -1,6 +1,4 @@
-use std::process::exit;
-
-use crate::io::{error, warn};
+use crate::io::error;
 use crate::token::{Token, TokenType};
 
 const ENCAPSULATORS_LEFT: [char; 4] = [
@@ -137,6 +135,18 @@ impl Lexer {
         }
     }
 
+    fn print_error(&self, character: char) {
+        error(format!("Syntax error at line {}, column {}{}: '{}'",
+            self.line,
+            self.column,
+            match self.file.clone() {
+                Some(file) => format!(" in {}", file),
+                None => String::from(""),
+            },
+            character
+        ).as_str());
+    }
+
     fn end_token(&mut self) {
         let token_type = match self.state {
             State::Separator => TokenType::Separator,
@@ -203,10 +213,7 @@ impl Lexer {
             '"' => State::String,
             ':' => State::Colon,
             _ => {
-                error(format!("Unsupported character: '{}'\n  Setting state to {:?}",
-                              character,
-                              State::Error).as_str()
-                );
+                self.print_error(character);
                 State::Error
             }
         }
@@ -304,7 +311,7 @@ mod test {
     }
 
     #[test]
-    fn it_panics_at_malformed_number() {
+    fn it_errors_at_malformed_number() {
         let mut lexer = Lexer::new();
         parse(&mut lexer, "2.345.6");
 
