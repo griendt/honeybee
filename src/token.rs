@@ -23,6 +23,11 @@ impl fmt::Display for TokenType {
 pub struct Token {
     pub(crate) data_type: TokenType,
     pub(crate) value: String,
+
+    // Metadata
+    pub(crate) file: Option<String>,
+    pub(crate) line: u32,
+    pub(crate) column: u32,
 }
 
 impl fmt::Display for Token {

@@ -62,17 +62,30 @@ enum State {
 
 #[derive(Debug)]
 pub struct Lexer {
+    // The sequence of lexed tokens
+    pub tokens: Vec<Token>,
     // The current state of the lexer
     state: State,
     // A sequence of characters that form an incomplete token
     register: String,
-    pub tokens: Vec<Token>,
+
+    // Metadata for error messages and debugging
+    file: Option<String>,
+    line: u32,
+    column: u32,
 }
 
 impl Lexer {
     // Instantiate a new lexer.
     pub fn new() -> Lexer {
-        Lexer { state: State::None, register: "".to_string(), tokens: vec![] }
+        Lexer {
+            state: State::None,
+            register: String::from(""),
+            tokens: vec![],
+            file: None,
+            line: 1,
+            column: 1,
+        }
     }
 
     pub fn lex(&mut self, character: char) -> () {
@@ -102,6 +115,11 @@ impl Lexer {
                 self.register.push(character);
             }
         }
+
+        self.column += 1;
+        // TODO: Detect whether we have found a newline. If so,
+        // reset the column counter and increment the line counter.
+
         self.state = new_state;
     }
 
@@ -138,7 +156,15 @@ impl Lexer {
         if ![TokenType::None, TokenType::Error].contains(&token_type) {
             // Any token that has a type other than None or Error, will be appended to the list.
             // If we wish to add a null token, use the Null token type instead.
-            let token = Token { data_type: token_type, value: self.register.clone() };
+            let token = Token {
+                data_type: token_type,
+                value: self.register.clone(),
+                file: self.file.clone(),
+                line: self.line,
+
+                // TODO: This works unless one token consists of multiple lines.
+                column: self.column - self.register.len() as u32
+            };
             self.tokens.push(token);
         }
 
