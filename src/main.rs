@@ -6,6 +6,7 @@ mod parser;
 mod lexer;
 mod io;
 mod token;
+mod ast;
 
 fn run(file: String) {
     parser::parse(file);

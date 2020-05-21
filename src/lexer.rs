@@ -1,5 +1,7 @@
+use std::borrow::Borrow;
+
 use crate::io::{error, warn};
-use crate::token::{Token, TokenType};
+use crate::token::{Token, TokenCategory};
 
 const ENCAPSULATORS_LEFT: [char; 4] = [
     '{',
@@ -142,51 +144,61 @@ impl Lexer {
 
     pub fn pretty_print_tokens(&self) {
         for token in self.tokens.iter() {
-            println!("{:>12}: {}", format!("{}", token.token_type), token.value);
+            println!(
+                "{:>3}.{:<3} {:>10}: {:<6} {}",
+                token.line,
+                token.column,
+                format!("{}", token.category),
+                token.value,
+                match token._type.borrow() {
+                    Some(x) => format!("({})", x),
+                    None => String::from(""),
+                });
         }
     }
 
     fn print_error(&self, character: char) -> () {
         if !self.verbose { return; }
         error(format!("Syntax error at line {}, column {}{}: '{}'",
-            self.line,
-            self.column,
-            match self.file.clone() {
-                Some(file) => format!(" in {}", file),
-                None => String::from(""),
-            },
-            character
+                      self.line,
+                      self.column,
+                      match self.file.clone() {
+                          Some(file) => format!(" in {}", file),
+                          None => String::from(""),
+                      },
+                      character
         ).as_str());
     }
 
     fn end_token(&mut self) {
-        let token_type = match self.state {
-            State::Separator => TokenType::Separator,
-            State::Operator => TokenType::Operator,
-            State::Numeric | State::NumericDecimal | State::DecimalSeparator => TokenType::Numeric,
-            State::Identifier => TokenType::Identifier,
-            State::None => TokenType::None,
-            State::Error => TokenType::Error,
+        let token_category = match self.state {
+            State::Separator => TokenCategory::Separator,
+            State::Operator => TokenCategory::Operator,
+            State::Numeric | State::NumericDecimal | State::DecimalSeparator => TokenCategory::Literal,
+            State::Identifier => TokenCategory::Identifier,
+            State::None => TokenCategory::None,
+            State::Error => TokenCategory::Error,
 
             // For each state, we must determine what type of token
             // we should add as the end the current token.
             _ => {
                 error(format!("Unsupported state: {:?}", self.state).as_str());
-                TokenType::Error
+                TokenCategory::Error
             }
         };
 
-        if ![TokenType::None, TokenType::Error].contains(&token_type) {
+        if ![TokenCategory::None, TokenCategory::Error].contains(&token_category) {
             // Any token that has a type other than None or Error, will be appended to the list.
             // If we wish to add a null token, use the Null token type instead.
             let token = Token {
-                token_type: token_type,
+                category: token_category,
+                _type: None,
                 value: self.register.clone(),
                 file: self.file.clone(),
                 line: self.line,
 
                 // TODO: This works unless one token consists of multiple lines.
-                column: self.column - self.register.len() as u32
+                column: self.column - self.register.len() as u32,
             };
             self.tokens.push(token);
         }
@@ -287,7 +299,7 @@ mod test {
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
         assert_eq!(lexer.tokens[0].value, "foo");
-        assert_eq!(lexer.tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(lexer.tokens[0].category, TokenCategory::Identifier);
     }
 
     #[test]
@@ -297,7 +309,7 @@ mod test {
 
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
-        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[0].value, "3");
     }
 
@@ -308,7 +320,7 @@ mod test {
 
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
-        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[0].value, "2.");
     }
 
@@ -319,7 +331,7 @@ mod test {
 
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
-        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[0].value, "2.34");
     }
 
@@ -336,17 +348,17 @@ mod test {
     fn it_lexes_a_simple_arithmetic_expression() {
         let mut lexer = Lexer::new();
         parse(&mut lexer, "1 + 2 = 3");
-        assert_eq!(lexer.state,  State::None);
+        assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 5);
-        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[0].value, "1");
-        assert_eq!(lexer.tokens[1].token_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[1].category, TokenCategory::Operator);
         assert_eq!(lexer.tokens[1].value, "+");
-        assert_eq!(lexer.tokens[2].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[2].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[2].value, "2");
-        assert_eq!(lexer.tokens[3].token_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[3].category, TokenCategory::Operator);
         assert_eq!(lexer.tokens[3].value, "=");
-        assert_eq!(lexer.tokens[4].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[4].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[4].value, "3");
     }
 
@@ -356,11 +368,11 @@ mod test {
         parse(&mut lexer, "22.+9.8");
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 3);
-        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[0].value, "22.");
-        assert_eq!(lexer.tokens[1].token_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[1].category, TokenCategory::Operator);
         assert_eq!(lexer.tokens[1].value, "+");
-        assert_eq!(lexer.tokens[2].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[2].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[2].value, "9.8");
     }
 
@@ -369,13 +381,13 @@ mod test {
         let mut lexer = Lexer::new();
         parse(&mut lexer, "2=3\n4");
         assert_eq!(lexer.tokens.len(), 4);
-        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[0].value, "2");
-        assert_eq!(lexer.tokens[1].token_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[1].category, TokenCategory::Operator);
         assert_eq!(lexer.tokens[1].value, "=");
-        assert_eq!(lexer.tokens[2].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[2].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[2].value, "3");
-        assert_eq!(lexer.tokens[3].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[3].category, TokenCategory::Literal);
         assert_eq!(lexer.tokens[3].value, "4");
     }
 }

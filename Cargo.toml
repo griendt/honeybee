@@ -1,5 +1,5 @@
 [package]
-name = "torustoise"
+name = "honeybee"
 version = "0.1.0"
 authors = ["Alex van de Griendt <avdg.lucerna@gmail.com>"]
 edition = "2018"
