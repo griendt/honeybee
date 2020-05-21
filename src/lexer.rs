@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use crate::io::{error, warn};
+use crate::io::{error};
 use crate::token::{Token, TokenCategory};
 
 const ENCAPSULATORS_LEFT: [char; 4] = [
@@ -47,9 +47,9 @@ enum State {
     // Reading between double quotes
     String,
     // In escaped mode while reading between single quotes
-    CharacterEscape,
+    // CharacterEscape,
     // In escaped mode while reading between double quotes
-    StringEscape,
+    // StringEscape,
     // A numeric value
     Numeric,
     // The decimal dot
@@ -59,7 +59,7 @@ enum State {
     // An atom or some operator using the colon symbol
     Colon,
     // An atom
-    Atom,
+    // Atom,
 }
 
 #[derive(Debug)]

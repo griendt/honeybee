@@ -1,16 +1,15 @@
 use std::fmt;
 use std::fmt::Formatter;
-use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub enum TokenCategory {
     None,         // Dummy token
-    Null,         // NULL
+    // Null,         // NULL
     Identifier,   // Name of a variable or function
     Operator,     // Tokens that represent operators
     Separator,    // A separation token
     Literal,      // An integer, float or decimal literal or a string
-    Atom,         // An atom
+    // Atom,         // An atom
     Error,        // Something bad happened (parse error)
 }
 impl fmt::Display for TokenCategory {

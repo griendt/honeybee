@@ -1,4 +1,3 @@
-use crate::io::{error, warn};
 use crate::token::{Token, TokenCategory, TokenType};
 use std::borrow::Borrow;
 
