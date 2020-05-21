@@ -22,9 +22,6 @@ fn main() {
             continue;
         }
 
-        // let contents = fs::read_to_string(arg)
-        //     .expect("Something went wrong reading the file");
-
         run(arg);
     }
 

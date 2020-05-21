@@ -140,6 +140,12 @@ impl Lexer {
         }
     }
 
+    pub fn pretty_print_tokens(&self) {
+        for token in self.tokens.iter() {
+            println!("{:>12}: {}", format!("{}", token.token_type), token.value);
+        }
+    }
+
     fn print_error(&self, character: char) -> () {
         if !self.verbose { return; }
         error(format!("Syntax error at line {}, column {}{}: '{}'",
@@ -174,7 +180,7 @@ impl Lexer {
             // Any token that has a type other than None or Error, will be appended to the list.
             // If we wish to add a null token, use the Null token type instead.
             let token = Token {
-                data_type: token_type,
+                token_type: token_type,
                 value: self.register.clone(),
                 file: self.file.clone(),
                 line: self.line,
@@ -281,7 +287,7 @@ mod test {
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
         assert_eq!(lexer.tokens[0].value, "foo");
-        assert_eq!(lexer.tokens[0].data_type, TokenType::Identifier);
+        assert_eq!(lexer.tokens[0].token_type, TokenType::Identifier);
     }
 
     #[test]
@@ -291,7 +297,7 @@ mod test {
 
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
-        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
         assert_eq!(lexer.tokens[0].value, "3");
     }
 
@@ -302,7 +308,7 @@ mod test {
 
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
-        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
         assert_eq!(lexer.tokens[0].value, "2.");
     }
 
@@ -313,7 +319,7 @@ mod test {
 
         assert_eq!(lexer.state, State::None);
         assert_eq!(lexer.tokens.len(), 1);
-        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
         assert_eq!(lexer.tokens[0].value, "2.34");
     }
 
@@ -332,15 +338,44 @@ mod test {
         parse(&mut lexer, "1 + 2 = 3");
         assert_eq!(lexer.state,  State::None);
         assert_eq!(lexer.tokens.len(), 5);
-        assert_eq!(lexer.tokens[0].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
         assert_eq!(lexer.tokens[0].value, "1");
-        assert_eq!(lexer.tokens[1].data_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[1].token_type, TokenType::Operator);
         assert_eq!(lexer.tokens[1].value, "+");
-        assert_eq!(lexer.tokens[2].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[2].token_type, TokenType::Numeric);
         assert_eq!(lexer.tokens[2].value, "2");
-        assert_eq!(lexer.tokens[3].data_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[3].token_type, TokenType::Operator);
         assert_eq!(lexer.tokens[3].value, "=");
-        assert_eq!(lexer.tokens[4].data_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[4].token_type, TokenType::Numeric);
         assert_eq!(lexer.tokens[4].value, "3");
+    }
+
+    #[test]
+    fn it_lexes_statements_without_whitespace() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "22.+9.8");
+        assert_eq!(lexer.state, State::None);
+        assert_eq!(lexer.tokens.len(), 3);
+        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].value, "22.");
+        assert_eq!(lexer.tokens[1].token_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[1].value, "+");
+        assert_eq!(lexer.tokens[2].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[2].value, "9.8");
+    }
+
+    #[test]
+    fn it_handles_newlines() {
+        let mut lexer = Lexer::new();
+        parse(&mut lexer, "2=3\n4");
+        assert_eq!(lexer.tokens.len(), 4);
+        assert_eq!(lexer.tokens[0].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[0].value, "2");
+        assert_eq!(lexer.tokens[1].token_type, TokenType::Operator);
+        assert_eq!(lexer.tokens[1].value, "=");
+        assert_eq!(lexer.tokens[2].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[2].value, "3");
+        assert_eq!(lexer.tokens[3].token_type, TokenType::Numeric);
+        assert_eq!(lexer.tokens[3].value, "4");
     }
 }

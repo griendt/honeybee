@@ -1,12 +1,13 @@
 use crate::lexer::Lexer;
 use std::fs;
+use crate::io::info;
 
 
 pub fn parse(file: String) {
     let code = fs::read_to_string(file.clone())
         .expect("Something went wrong reading the file");
 
-    println!("The code contains:\n  {}", code);
+    info(format!("The code contains:\n  {}", code).as_str());
 
     let mut lexer = Lexer::new();
 
@@ -16,5 +17,5 @@ pub fn parse(file: String) {
     }
 
     lexer.finish();
-    println!("{:#?}", lexer);
+    lexer.pretty_print_tokens();
 }

@@ -21,7 +21,7 @@ impl fmt::Display for TokenType {
 
 #[derive(Debug)]
 pub struct Token {
-    pub(crate) data_type: TokenType,
+    pub(crate) token_type: TokenType,
     pub(crate) value: String,
 
     // Metadata
@@ -32,6 +32,6 @@ pub struct Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.data_type, self.value)
+        write!(f, "{}: {}", self.token_type, self.value)
     }
 }
