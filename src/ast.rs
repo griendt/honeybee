@@ -8,17 +8,17 @@ pub struct AST {
     pub scope: HashMap<String, HoneyValue>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum HoneyValue {
     Number(u64),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StatementType {
     Error,
     Leaf,
     Assignment,
-    // CodeBlock,
+    CodeBlock,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +28,14 @@ pub struct Statement {
 }
 
 impl Statement {
+
+    pub fn from_tokens(tokens: Vec<Token>) -> Self {
+        let mut statement = Statement { tokens: vec![], _type: None };
+        statement.tokens = tokens;
+        statement._type = Some(statement.determine_type());
+        statement
+    }
+
     pub fn determine_type(&self) -> StatementType {
         if self.tokens.len() == 1 {
             return StatementType::Leaf;
@@ -47,12 +55,25 @@ impl Statement {
         StatementType::Error
     }
 
-    pub fn execute(&self, scope: &mut HashMap<String, HoneyValue>) {
+    pub fn execute(&self, scope: &mut HashMap<String, HoneyValue>) -> Option<HoneyValue> {
         // We should probably require a context or scope for the statement as an argument.
         // Right now we won't care about that and just execute whatever is inside the statement
         // as if it were the only part of the entire program.
         match self._type {
+            Some(StatementType::CodeBlock) => {
+                // If we're dealing with a code block, split it
+                // into sub-statements, and execute each of them.
+                // Note that this is a recursive call!
+                let statements = self.get_statements_from_code_block();
+                let mut return_value = None;
+                for statement in statements {
+                    return_value = statement.execute(scope);
+                }
+
+                return_value
+            },
             Some(StatementType::Assignment) => self.execute_assignment(scope),
+            Some(StatementType::Leaf) => Some(self.tokens[0].to_honey_value(scope)),
 
             // We could, in theory, determine the type on the go, but this should never
             // be needed. Therefore we will explicitly panic because it implies bad
@@ -63,13 +84,17 @@ impl Statement {
         }
     }
 
-    fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>) {
+    fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>) -> Option<HoneyValue> {
         // An assignment consists of two parts: the left side, which should be an identifier,
         // and the right side, which should be an expression that reduces to a single value.
         // For now we only support elementary identifiers on the left side (i.e. one token).
         // We should extend this, of course, to implement assignments such as foo.bar = baz.
         // However, this extension COULD be implemented in a part of code that gets executed
         // before this function is reached.
+        if self.tokens[0]._type != Some(TokenType::VariableName) {
+            panic!("Cannot assign to non-variable value: {}", self.tokens[0].value)
+        }
+
         assert_eq!(self.tokens[0]._type, Some(TokenType::VariableName));
         assert_eq!(self.tokens[1]._type, Some(TokenType::AssignmentOperator));
         assert!([TokenType::VariableName, TokenType::NumericLiteral]
@@ -80,10 +105,37 @@ impl Statement {
         // we even reach this part of the code, and we should ask of each side whether they are
         // elementary (and if not, execute the sub-expressions first). But right now we are only
         // supporting elementary expressions.
-        if self.tokens.len() == 4 {
-            let value = self.tokens[2].to_honey_value(scope);
-            scope.insert(self.tokens[0].value.clone(), value);
+
+        let value = match self.tokens.len() {
+            // An elementary assignment: the right-hand side is a single token
+            4 => self.tokens[2].to_honey_value(scope),
+            _ => { Statement::from_tokens(self.tokens[2..].to_owned())
+                .execute(scope)
+                .unwrap()
+            }
+        };
+
+        scope.insert(self.tokens[0].value.clone(), value);
+        Some(value)
+    }
+
+    // A CodeBlock-type statement contains sub-statements.
+    // This method splits that statement into a vector of its sub-statements.
+    fn get_statements_from_code_block(&self) -> Vec<Statement> {
+        assert_eq!(self._type, Some(StatementType::CodeBlock));
+
+        let mut statements: Vec<Statement> = vec![];
+        let statement = &mut Statement { tokens: vec![], _type: None };
+        for token in self.tokens.iter() {
+            statement.tokens.push(token.clone());
+            if token._type == Some(TokenType::StatementSeparator) {
+                statement._type = Some(statement.determine_type());
+                statements.push((&*statement).clone());
+                statement.tokens = vec!();
+            }
         }
+
+        statements
     }
 }
 
@@ -131,28 +183,15 @@ impl AST {
         // Turn immutable
         let tokens = &*tokens;
 
-        // Any program is really a code block. Split up all tokens into a list
-        // of statements which should be parsed and executed sequentially.
-        // let &mut codeBlock = CodeBlock { statements: vec![] };
-        let code_block = &mut CodeBlock { statements: vec!() };
+        // Any program is really a code block. So, we will create a CodeBlock
+        // type statement as the root node of the abstract syntax tree.
+        // When executing the code, the tree will expand into sub-statements.
+        let code_block = &mut Statement {
+            tokens: tokens.clone(),
+            _type: Some(StatementType::CodeBlock)
+        };
 
-        let statement = &mut Statement { tokens: vec![], _type: None };
-
-        for token in tokens {
-            statement.tokens.push(token.clone());
-            if token._type == Some(TokenType::StatementSeparator) {
-                statement._type = Some(statement.determine_type());
-                code_block.statements.push((&*statement).clone());
-                statement.tokens = vec!();
-            }
-        }
-
-        // Technically we could already execute the code as we are parsing the next parts
-        // of the code. However this is quite dangerous (a file should not execute at all if
-        // it contains any syntax errors) and requires threading and so on... maybe one day.
-        for statement in code_block.statements.iter() {
-            statement.execute(&mut self.scope);
-        }
+        code_block.execute(&mut self.scope);
     }
 }
 
@@ -217,7 +256,7 @@ mod test {
 
     #[test]
     fn accessing_uninitialized_variable_yields_a_none() {
-        let mut ast = AST::new();
+        let ast = AST::new();
         assert_eq!(ast.scope.get("x"), None);
     }
 
