@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenCategory {
     None,         // Dummy token
     // Null,         // NULL
@@ -18,7 +18,7 @@ impl fmt::Display for TokenCategory {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     VariableName,
     AssignmentOperator,
@@ -34,7 +34,7 @@ impl fmt::Display for TokenType {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     // The value of the token as it is present in the source code.
     pub(crate) value: String,
@@ -51,6 +51,36 @@ pub struct Token {
     pub(crate) column: u32,
 }
 
+impl Token {
+    pub fn new() -> Token {
+        Token {
+            value: "".to_string(),
+            category: TokenCategory::None,
+            _type: None,
+            file: None,
+            line: 0,
+            column: 0
+        }
+    }
+
+    pub fn setValue(&self, value: String) -> Token {
+        let mut new_token = self.clone();
+        new_token.value = value;
+        new_token
+    }
+
+    pub fn setCategory(&self, category: TokenCategory) -> Token {
+        let mut new_token = self.clone();
+        new_token.category = category;
+        new_token
+    }
+
+    pub fn setType(&self, _type: TokenType) -> Token {
+        let mut new_token = self.clone();
+        new_token._type = Some(_type);
+        new_token
+    }
+}
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.category, self.value)
