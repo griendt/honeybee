@@ -31,13 +31,14 @@ fn run(file: String) {
     lexer.pretty_print_tokens();
 
     let mut ast = AST::new();
+    lexer.tokens.iter_mut().for_each(|token| ast.parse_token(token));
 
-    ast.make(lexer.tokens.as_mut());
-
-    info("Pre-AST parsing result:");
+    info("Pre-AST parse result was:");
     lexer.pretty_print_tokens();
 
-    info("Program result:");
+    ast.build_and_run(lexer.tokens);
+
+    info("Global state after execution:");
     println!("{:?}", ast.scope)
 }
 

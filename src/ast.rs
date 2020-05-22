@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use crate::token::{Token, TokenCategory, TokenType};
+use crate::io::{error, info};
 
 #[derive(Debug)]
 pub struct AST {
@@ -55,7 +56,8 @@ impl Statement {
         StatementType::Error
     }
 
-    pub fn execute(&self, scope: &mut HashMap<String, HoneyValue>) -> Option<HoneyValue> {
+    pub fn execute(&self, scope: &mut HashMap<String, HoneyValue>)
+        -> Result<Option<HoneyValue>, &'static str> {
         // We should probably require a context or scope for the statement as an argument.
         // Right now we won't care about that and just execute whatever is inside the statement
         // as if it were the only part of the entire program.
@@ -65,7 +67,7 @@ impl Statement {
                 // into sub-statements, and execute each of them.
                 // Note that this is a recursive call!
                 let statements = self.get_statements_from_code_block();
-                let mut return_value = None;
+                let mut return_value = Ok(None);
                 for statement in statements {
                     return_value = statement.execute(scope);
                 }
@@ -73,7 +75,7 @@ impl Statement {
                 return_value
             },
             Some(StatementType::Assignment) => self.execute_assignment(scope),
-            Some(StatementType::Leaf) => Some(self.tokens[0].to_honey_value(scope)),
+            Some(StatementType::Leaf) => Ok(Some(self.tokens[0].to_honey_value(scope))),
 
             // We could, in theory, determine the type on the go, but this should never
             // be needed. Therefore we will explicitly panic because it implies bad
@@ -84,7 +86,9 @@ impl Statement {
         }
     }
 
-    fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>) -> Option<HoneyValue> {
+    fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>)
+        -> Result<Option<HoneyValue>, &'static str>
+    {
         // An assignment consists of two parts: the left side, which should be an identifier,
         // and the right side, which should be an expression that reduces to a single value.
         // For now we only support elementary identifiers on the left side (i.e. one token).
@@ -92,7 +96,7 @@ impl Statement {
         // However, this extension COULD be implemented in a part of code that gets executed
         // before this function is reached.
         if self.tokens[0]._type != Some(TokenType::VariableName) {
-            panic!("Cannot assign to non-variable value: {}", self.tokens[0].value)
+            return Err("Cannot assign to non-variable value");
         }
 
         assert_eq!(self.tokens[0]._type, Some(TokenType::VariableName));
@@ -108,15 +112,20 @@ impl Statement {
 
         let value = match self.tokens.len() {
             // An elementary assignment: the right-hand side is a single token
-            4 => self.tokens[2].to_honey_value(scope),
-            _ => { Statement::from_tokens(self.tokens[2..].to_owned())
+            4 => Ok(Some(self.tokens[2].to_honey_value(scope))),
+            _ => {
+                Statement::from_tokens(self.tokens[2..].to_owned())
                 .execute(scope)
-                .unwrap()
             }
         };
 
-        scope.insert(self.tokens[0].value.clone(), value);
-        Some(value)
+        match value {
+            Ok(_) => {
+                scope.insert(self.tokens[0].value.clone(), value.unwrap().unwrap());
+                value
+            },
+            Err(_) => value,
+        }
     }
 
     // A CodeBlock-type statement contains sub-statements.
@@ -176,13 +185,7 @@ impl AST {
         };
     }
 
-    pub fn make(&mut self, tokens: &mut Vec<Token>) -> () {
-        // First, parse the tokens into their more concrete types.
-        tokens.iter_mut().for_each(|token| self.parse_token(token));
-
-        // Turn immutable
-        let tokens = &*tokens;
-
+    pub fn build_and_run(&mut self, tokens: Vec<Token>) -> () {
         // Any program is really a code block. So, we will create a CodeBlock
         // type statement as the root node of the abstract syntax tree.
         // When executing the code, the tree will expand into sub-statements.
@@ -191,7 +194,14 @@ impl AST {
             _type: Some(StatementType::CodeBlock)
         };
 
-        code_block.execute(&mut self.scope);
+        let result = code_block.execute(&mut self.scope);
+        match result {
+            Ok(Some(value)) => info(format!(
+                "Program executed successfully with return value: {:?}", value
+            ).as_str()),
+            Ok(None) => info("Program executed successfully with no return value"),
+            Err(e) => error(format!("Program failed with error: {}", e).as_str())
+        };
     }
 }
 
@@ -249,7 +259,7 @@ mod test {
         );
 
         let mut ast = AST::new();
-        ast.make(tokens);
+        ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(3)));
     }
@@ -292,7 +302,7 @@ mod test {
         );
 
         let mut ast = AST::new();
-        ast.make(tokens);
+        ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
     }
@@ -341,7 +351,7 @@ mod test {
         );
 
         let mut ast = AST::new();
-        ast.make(tokens);
+        ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
         assert_eq!(ast.scope.get("y"), Some(&Number(4)));
@@ -403,7 +413,7 @@ mod test {
         );
 
         let mut ast = AST::new();
-        ast.make(tokens);
+        ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(5)));
         assert_eq!(ast.scope.get("y"), Some(&Number(4)));
