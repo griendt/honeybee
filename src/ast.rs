@@ -8,7 +8,7 @@ pub struct AST {
     pub scope: HashMap<String, HoneyValue>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum HoneyValue {
     Number(u64),
 }
@@ -72,6 +72,8 @@ impl Statement {
         // before this function is reached.
         assert_eq!(self.tokens[0]._type, Some(TokenType::VariableName));
         assert_eq!(self.tokens[1]._type, Some(TokenType::AssignmentOperator));
+        assert!([TokenType::VariableName, TokenType::NumericLiteral]
+            .contains(&self.tokens[2]._type.unwrap()));
 
         // This is probably not the best check to ask whether we are dealing with an elementary
         // expression... the left- and right hand sides should probably already be split before
@@ -79,7 +81,7 @@ impl Statement {
         // elementary (and if not, execute the sub-expressions first). But right now we are only
         // supporting elementary expressions.
         if self.tokens.len() == 4 {
-            let value = self.tokens[2].to_honey_value();
+            let value = self.tokens[2].to_honey_value(scope);
             scope.insert(self.tokens[0].value.clone(), value);
         }
     }
@@ -156,10 +158,14 @@ impl AST {
 
 #[cfg(test)]
 mod test {
+    use crate::ast::HoneyValue::Number;
+
     use super::*;
 
     #[test]
     fn it_recognizes_token_types_in_a_simple_assignment() {
+        // Corresponds to the following source code:
+        // x=3;
         let tokens: &mut Vec<Token> = &mut vec!(
             Token::new()
                 .set_category(TokenCategory::Identifier)
@@ -186,6 +192,8 @@ mod test {
 
     #[test]
     fn it_parses_a_simple_assignment() {
+        // Corresponds to the following source code:
+        // x=3;
         let tokens: &mut Vec<Token> = &mut vec!(
             Token::new()
                 .set_category(TokenCategory::Identifier)
@@ -201,7 +209,164 @@ mod test {
                 .set_value(String::from(";")),
         );
 
-        let ast = AST::new();
+        let mut ast = AST::new();
         ast.make(tokens);
+
+        assert_eq!(ast.scope.get("x"), Some(&Number(3)));
+    }
+
+    #[test]
+    fn accessing_uninitialized_variable_yields_a_none() {
+        let mut ast = AST::new();
+        assert_eq!(ast.scope.get("x"), None);
+    }
+
+    #[test]
+    fn it_allows_variable_redefinition() {
+        // Corresponds to the following source code:
+        // x=3;x=4;
+        let tokens: &mut Vec<Token> = &mut vec!(
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("3")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("4")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+        );
+
+        let mut ast = AST::new();
+        ast.make(tokens);
+
+        assert_eq!(ast.scope.get("x"), Some(&Number(4)));
+    }
+
+    #[test]
+    fn it_can_assign_a_variable_to_another_variable() {
+        // Corresponds to the following source code:
+        // x=3;x=4;x=y;
+        let tokens: &mut Vec<Token> = &mut vec!(
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("3")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("y")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("4")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("y")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+        );
+
+        let mut ast = AST::new();
+        ast.make(tokens);
+
+        assert_eq!(ast.scope.get("x"), Some(&Number(4)));
+        assert_eq!(ast.scope.get("y"), Some(&Number(4)));
+    }
+
+    #[test]
+    fn it_can_assign_a_new_value_after_being_assigned_to_another_variable() {
+        // Corresponds to the following source code:
+        // x=3;x=4;x=y;x=5;
+        let tokens: &mut Vec<Token> = &mut vec!(
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("3")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("y")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("4")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("y")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("5")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+        );
+
+        let mut ast = AST::new();
+        ast.make(tokens);
+
+        assert_eq!(ast.scope.get("x"), Some(&Number(5)));
+        assert_eq!(ast.scope.get("y"), Some(&Number(4)));
     }
 }

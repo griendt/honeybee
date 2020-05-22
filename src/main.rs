@@ -16,7 +16,7 @@ fn run(file: String) {
         .expect("Something went wrong reading the file");
 
     info("Source code:");
-    println!("  {}", code);
+    println!("  {}", code.replace("\n", "\n  "));
 
     let mut lexer = Lexer::new();
 
