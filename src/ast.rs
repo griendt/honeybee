@@ -1,9 +1,15 @@
 use crate::token::{Token, TokenCategory, TokenType};
 use std::borrow::Borrow;
-use crate::io::info;
+use crate::io::{info, error};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct AST {}
+
+#[derive(Debug)]
+pub enum HoneyValue {
+    Number(u64),
+}
 
 #[derive(Debug, Clone)]
 pub enum StatementType {
@@ -37,6 +43,49 @@ impl Statement {
         }
 
         StatementType::Error
+    }
+
+    pub fn execute(&self, scope: &mut HashMap<String, HoneyValue>) {
+        // We should probably require a context or scope for the statement as an argument.
+        // Right now we won't care about that and just execute whatever is inside the statement
+        // as if it were the only part of the entire program.
+        match self._type {
+            Some(StatementType::Assignment) => self.execute_assignment(scope),
+
+            // We could, in theory, determine the type on the go, but this should never
+            // be needed. Therefore we will explicitly panic because it implies bad
+            // implementation at some point during the parsing of the tokens.
+            None => panic!("Cannot execute statement whose type was not evaluated"),
+
+            _ => panic!("Unsupported statement type: {:?}", self._type)
+        }
+    }
+
+    fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>) {
+        // An assignment consists of two parts: the left side, which should be an identifier,
+        // and the right side, which should be an expression that reduces to a single value.
+        // For now we only support elementary identifiers on the left side (i.e. one token).
+        // We should extend this, of course, to implement assignments such as foo.bar = baz.
+        // However, this extension COULD be implemented in a part of code that gets executed
+        // before this function is reached.
+        assert_eq!(self.tokens[0]._type, Some(TokenType::VariableName));
+        assert_eq!(self.tokens[1]._type, Some(TokenType::AssignmentOperator));
+
+        error("We are going to execute an assignment!");
+        // This is probably not the best check to ask whether we are dealing with an elementary
+        // expression... the left- and right hand sides should probably already be split before
+        // we even reach this part of the code, and we should ask of each side whether they are
+        // elementary (and if not, execute the sub-expressions first). But right now we are only
+        // supporting elementary expressions.
+        if self.tokens.len() == 4 {
+            let value = self.tokens[2].to_honey_value();
+            scope.insert(self.tokens[0].value.clone(), value);
+
+            println!("Scope is now:");
+            println!("{:#?}", scope);
+        }
+
+
     }
 }
 
@@ -76,7 +125,10 @@ impl AST {
         };
     }
 
-    pub fn make(&self, tokens: &mut Vec<Token>) {
+    // T is the generic that will be the kind of values that exist in the language.
+    // We should add a trait that this T should implement, and make sure to typehint
+    // that trait(s) in the functions that this function calls as well.
+    pub fn make<T>(&self, tokens: &mut Vec<Token>) {
         // First, parse the tokens into their more concrete types.
         tokens.iter_mut().for_each(|token| self.parse_token(token));
 
@@ -99,8 +151,16 @@ impl AST {
             }
         }
 
-        info("Code block:");
-        println!("{:#?}", code_block);
+        let global_scope: &mut HashMap<String, HoneyValue> = &mut HashMap::new();
+        // Technically we could already execute the code as we are parsing the next parts
+        // of the code. However this is quite dangerous (a file should not execute at all if
+        // it contains any syntax errors) and requires threading and so on... maybe one day.
+        for statement in code_block.statements.iter() {
+            statement.execute(global_scope);
+        }
+
+        info("Global state after executing:");
+        println!("{:#?}", global_scope);
     }
 
     pub fn interpret(&self, code_block: CodeBlock) -> () {

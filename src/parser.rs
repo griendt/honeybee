@@ -24,8 +24,10 @@ pub fn parse(file: String) {
     lexer.pretty_print_tokens();
 
     let ast = AST::new();
-    ast.make(lexer.tokens.as_mut());
+
+    ast.make::<u64>(lexer.tokens.as_mut());
 
     info("Pre-AST parsing result:");
     lexer.pretty_print_tokens();
+
 }

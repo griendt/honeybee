@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::Formatter;
+use crate::ast::HoneyValue;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenCategory {
@@ -60,6 +61,13 @@ impl Token {
             file: None,
             line: 0,
             column: 0
+        }
+    }
+
+    pub fn to_honey_value(&self) -> HoneyValue {
+        match self._type {
+            Some(TokenType::NumericLiteral) => HoneyValue::Number(self.value.parse::<u64>().unwrap()),
+            _ => panic!("Could not convert token with type {:#?} to HoneyValue", self._type),
         }
     }
 
