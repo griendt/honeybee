@@ -53,6 +53,10 @@ pub struct Token {
 }
 
 impl Token {
+
+    // This is a convenience method during unit testing.
+    // Hence we will annotate this method to avoid compiler warnings.
+    #[allow(dead_code)]
     pub fn new() -> Token {
         Token {
             value: "".to_string(),
@@ -71,19 +75,28 @@ impl Token {
         }
     }
 
-    pub fn setValue(&self, value: String) -> Token {
+    // This is a convenience method during unit testing.
+    // Hence we will annotate this method to avoid compiler warnings.
+    #[allow(dead_code)]
+    pub fn set_value(&self, value: String) -> Token {
         let mut new_token = self.clone();
         new_token.value = value;
         new_token
     }
 
-    pub fn setCategory(&self, category: TokenCategory) -> Token {
+    // This is a convenience method during unit testing.
+    // Hence we will annotate this method to avoid compiler warnings.
+    #[allow(dead_code)]
+    pub fn set_category(&self, category: TokenCategory) -> Token {
         let mut new_token = self.clone();
         new_token.category = category;
         new_token
     }
 
-    pub fn setType(&self, _type: TokenType) -> Token {
+    // This is a convenience method during unit testing.
+    // Hence we will annotate this method to avoid compiler warnings.
+    #[allow(dead_code)]
+    pub fn set_type(&self, _type: TokenType) -> Token {
         let mut new_token = self.clone();
         new_token._type = Some(_type);
         new_token

@@ -1,10 +1,12 @@
-use crate::token::{Token, TokenCategory, TokenType};
 use std::borrow::Borrow;
-use crate::io::{info, error};
 use std::collections::HashMap;
 
+use crate::token::{Token, TokenCategory, TokenType};
+
 #[derive(Debug)]
-pub struct AST {}
+pub struct AST {
+    pub scope: HashMap<String, HoneyValue>,
+}
 
 #[derive(Debug)]
 pub enum HoneyValue {
@@ -16,7 +18,7 @@ pub enum StatementType {
     Error,
     Leaf,
     Assignment,
-    CodeBlock,
+    // CodeBlock,
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +73,6 @@ impl Statement {
         assert_eq!(self.tokens[0]._type, Some(TokenType::VariableName));
         assert_eq!(self.tokens[1]._type, Some(TokenType::AssignmentOperator));
 
-        error("We are going to execute an assignment!");
         // This is probably not the best check to ask whether we are dealing with an elementary
         // expression... the left- and right hand sides should probably already be split before
         // we even reach this part of the code, and we should ask of each side whether they are
@@ -80,12 +81,7 @@ impl Statement {
         if self.tokens.len() == 4 {
             let value = self.tokens[2].to_honey_value();
             scope.insert(self.tokens[0].value.clone(), value);
-
-            println!("Scope is now:");
-            println!("{:#?}", scope);
         }
-
-
     }
 }
 
@@ -96,7 +92,8 @@ pub struct CodeBlock {
 
 impl AST {
     pub fn new() -> AST {
-        AST {}
+        let scope: HashMap<String, HoneyValue> = HashMap::new();
+        AST { scope }
     }
 
     pub fn parse_token(&self, token: &mut Token) -> () {
@@ -125,10 +122,7 @@ impl AST {
         };
     }
 
-    // T is the generic that will be the kind of values that exist in the language.
-    // We should add a trait that this T should implement, and make sure to typehint
-    // that trait(s) in the functions that this function calls as well.
-    pub fn make<T>(&self, tokens: &mut Vec<Token>) {
+    pub fn make(&mut self, tokens: &mut Vec<Token>) -> () {
         // First, parse the tokens into their more concrete types.
         tokens.iter_mut().for_each(|token| self.parse_token(token));
 
@@ -151,21 +145,11 @@ impl AST {
             }
         }
 
-        let global_scope: &mut HashMap<String, HoneyValue> = &mut HashMap::new();
         // Technically we could already execute the code as we are parsing the next parts
         // of the code. However this is quite dangerous (a file should not execute at all if
         // it contains any syntax errors) and requires threading and so on... maybe one day.
         for statement in code_block.statements.iter() {
-            statement.execute(global_scope);
-        }
-
-        info("Global state after executing:");
-        println!("{:#?}", global_scope);
-    }
-
-    pub fn interpret(&self, code_block: CodeBlock) -> () {
-        for statement in code_block.statements {
-
+            statement.execute(&mut self.scope);
         }
     }
 }
@@ -178,17 +162,17 @@ mod test {
     fn it_recognizes_token_types_in_a_simple_assignment() {
         let tokens: &mut Vec<Token> = &mut vec!(
             Token::new()
-                .setCategory(TokenCategory::Identifier)
-                .setValue(String::from("x")),
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
             Token::new()
-                .setCategory(TokenCategory::Operator)
-                .setValue(String::from("=")),
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
             Token::new()
-                .setCategory(TokenCategory::Literal)
-                .setValue(String::from("3")),
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("3")),
             Token::new()
-                .setCategory(TokenCategory::Separator)
-                .setValue(String::from(";")),
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
         );
 
         let ast = AST::new();
@@ -198,6 +182,26 @@ mod test {
         assert_eq!(tokens[1]._type, Some(TokenType::AssignmentOperator));
         assert_eq!(tokens[2]._type, Some(TokenType::NumericLiteral));
         assert_eq!(tokens[3]._type, Some(TokenType::StatementSeparator));
+    }
 
+    #[test]
+    fn it_parses_a_simple_assignment() {
+        let tokens: &mut Vec<Token> = &mut vec!(
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from("=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("3")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+        );
+
+        let ast = AST::new();
+        ast.make(tokens);
     }
 }
