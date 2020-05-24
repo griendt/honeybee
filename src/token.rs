@@ -72,7 +72,7 @@ impl Token {
         }
     }
 
-    fn print_error(&self, message: String) -> () {
+    pub fn print_error(&self, message: String) -> () {
         let full_message = format!("{} at line {} column {}{}",
             message,
             self.line,

@@ -6,6 +6,7 @@ use crate::ast::StatementContent::Assignment;
 use crate::io::{error, info};
 use crate::token::{Token, TokenCategory, TokenType};
 use crate::token::TokenType::AssignmentOperator;
+use std::process::exit;
 
 #[derive(Debug)]
 pub struct AST {
@@ -81,6 +82,13 @@ impl Statement {
                 // is the only kind of assignment we will support.
                 assert_eq!(operator_position, 1);
 
+                // Make sure that the left hand side is, indeed, a variable and not something
+                // else (such as a literal). Throw a syntax error otherwise.
+                if self.tokens[0].category == TokenCategory::Literal {
+                    self.tokens[0].print_error(String::from("Cannot assign to literal"));
+                    exit(1);
+                }
+
                 self.content = Assignment(AssignmentStatement {
                     variable: self.tokens[0].value.clone(),
                     value: Box::from(
@@ -89,7 +97,7 @@ impl Statement {
                         )
                     ),
                 });
-            }
+            },
             None => {
                 // A naive check to look at whether we are dealing with a singular value:
                 // a token and a semicolon. We should improve this.
