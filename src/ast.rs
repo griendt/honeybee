@@ -57,7 +57,7 @@ impl Statement {
     }
 
     pub fn execute(&self, scope: &mut HashMap<String, HoneyValue>)
-        -> Result<Option<HoneyValue>, &'static str> {
+        -> Result<Option<HoneyValue>, String> {
         // We should probably require a context or scope for the statement as an argument.
         // Right now we won't care about that and just execute whatever is inside the statement
         // as if it were the only part of the entire program.
@@ -87,7 +87,7 @@ impl Statement {
     }
 
     fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>)
-        -> Result<Option<HoneyValue>, &'static str>
+        -> Result<Option<HoneyValue>, String>
     {
         // An assignment consists of two parts: the left side, which should be an identifier,
         // and the right side, which should be an expression that reduces to a single value.
@@ -96,7 +96,15 @@ impl Statement {
         // However, this extension COULD be implemented in a part of code that gets executed
         // before this function is reached.
         if self.tokens[0]._type != Some(TokenType::VariableName) {
-            return Err("Cannot assign to non-variable value");
+            let error = format!(
+                "Cannot assign to non-variable value (line {} column {}{})",
+                self.tokens[0].line,
+                self.tokens[0].column,
+                match self.tokens[0].file.is_some() {
+                    true => format!(" in {}", self.tokens[0].file.as_ref().unwrap()),
+                    false => String::from(""),
+                });
+            return Err(error);
         }
 
         assert_eq!(self.tokens[0]._type, Some(TokenType::VariableName));
@@ -121,7 +129,8 @@ impl Statement {
 
         match value {
             Ok(_) => {
-                scope.insert(self.tokens[0].value.clone(), value.unwrap().unwrap());
+                let value_to_insert = value.borrow().as_ref().unwrap().unwrap();
+                scope.insert(self.tokens[0].value.clone(), value_to_insert);
                 value
             },
             Err(_) => value,

@@ -121,9 +121,13 @@ impl Lexer {
             }
         }
 
-        self.column += 1;
-        // TODO: Detect whether we have found a newline. If so,
-        // reset the column counter and increment the line counter.
+        if character == '\n' {
+            self.column = 1;
+            self.line += 1;
+        }
+        else {
+            self.column += 1;
+        }
 
         self.state = new_state;
     }
