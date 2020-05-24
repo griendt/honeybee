@@ -354,7 +354,7 @@ mod test {
     fn it_parses_a_simple_assignment() {
         // Corresponds to the following source code:
         // x=3;
-        let tokens: &mut Vec<Token> = &mut vec!(
+        let mut tokens: Vec<Token> = vec!(
             Token::new()
                 .set_category(TokenCategory::Identifier)
                 .set_value(String::from("x")),
@@ -370,6 +370,8 @@ mod test {
         );
 
         let mut ast = AST::new();
+
+        tokens.iter_mut().for_each(|token| ast.parse_token(token));
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(3)));
@@ -385,7 +387,7 @@ mod test {
     fn it_allows_variable_redefinition() {
         // Corresponds to the following source code:
         // x=3;x=4;
-        let tokens: &mut Vec<Token> = &mut vec!(
+        let mut tokens: Vec<Token> = vec!(
             Token::new()
                 .set_category(TokenCategory::Identifier)
                 .set_value(String::from("x")),
@@ -413,6 +415,8 @@ mod test {
         );
 
         let mut ast = AST::new();
+
+        tokens.iter_mut().for_each(|token| ast.parse_token(token));
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
@@ -420,9 +424,10 @@ mod test {
 
     #[test]
     fn it_can_assign_a_variable_to_another_variable() {
+        let mut ast = AST::new();
         // Corresponds to the following source code:
         // x=3;x=4;x=y;
-        let tokens: &mut Vec<Token> = &mut vec!(
+        let mut tokens: Vec<Token> = vec!(
             Token::new()
                 .set_category(TokenCategory::Identifier)
                 .set_value(String::from("x")),
@@ -461,7 +466,7 @@ mod test {
                 .set_value(String::from(";")),
         );
 
-        let mut ast = AST::new();
+        tokens.iter_mut().for_each(|token| ast.parse_token(token));
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
@@ -472,7 +477,7 @@ mod test {
     fn it_can_assign_a_new_value_after_being_assigned_to_another_variable() {
         // Corresponds to the following source code:
         // x=3;x=4;x=y;x=5;
-        let tokens: &mut Vec<Token> = &mut vec!(
+        let mut tokens: Vec<Token> = vec!(
             Token::new()
                 .set_category(TokenCategory::Identifier)
                 .set_value(String::from("x")),
@@ -524,6 +529,7 @@ mod test {
         );
 
         let mut ast = AST::new();
+        tokens.iter_mut().for_each(|token| ast.parse_token(token));
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(5)));
