@@ -85,7 +85,7 @@ impl Statement {
                 // Make sure that the left hand side is, indeed, a variable and not something
                 // else (such as a literal). Throw a syntax error otherwise.
                 if self.tokens[0].category == TokenCategory::Literal {
-                    self.tokens[0].print_error(String::from("Cannot assign to literal"));
+                    self.tokens[0].print_error(String::from("Syntax error: Cannot assign to literal"));
                     exit(1);
                 }
 
@@ -188,7 +188,10 @@ impl Statement {
             StatementContent::Leaf(LeafStatement::VariableName(name)) =>
                 match scope.get(name) {
                 Some(x) => Ok(Some(x.clone())),
-                None => panic!("Undefined variable: {}", name),
+                None => {
+                    self.tokens[0].print_error(format!("Undefined variable: '{}'", name));
+                    exit(1);
+                }
             },
 
             // We could, in theory, determine the type on the go, but this should never
@@ -201,24 +204,6 @@ impl Statement {
     fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>)
                           -> Result<Option<HoneyValue>, String>
     {
-        // An assignment consists of two parts: the left side, which should be an identifier,
-        // and the right side, which should be an expression that reduces to a single value.
-        // For now we only support elementary identifiers on the left side (i.e. one token).
-        // We should extend this, of course, to implement assignments such as foo.bar = baz.
-        // However, this extension COULD be implemented in a part of code that gets executed
-        // before this function is reached.
-        if self.tokens[0]._type != Some(TokenType::VariableName) {
-            let error = format!(
-                "Cannot assign to non-variable value (line {} column {}{})",
-                self.tokens[0].line,
-                self.tokens[0].column,
-                match self.tokens[0].file.is_some() {
-                    true => format!(" in {}", self.tokens[0].file.as_ref().unwrap()),
-                    false => String::from(""),
-                });
-            return Err(error);
-        }
-
         assert_eq!(self.tokens[0]._type, Some(TokenType::VariableName));
         assert_eq!(self.tokens[1]._type, Some(TokenType::AssignmentOperator));
         assert!([TokenType::VariableName, TokenType::NumericLiteral]
@@ -309,7 +294,7 @@ impl AST {
     pub fn build_and_run(&mut self, tokens: Vec<Token>) -> () {
         // Any program is really a code block. So, we will create a CodeBlock
         // type statement as the root node of the abstract syntax tree.
-        // When executing the code, the tree will expand into sub-statements.
+        // Then we will parse the code block, which in turn will parse its sub-statements.
         let code_block = &mut Statement {
             tokens: tokens.clone(),
             content: StatementContent::CodeBlock(CodeBlockStatement { statements: vec![] }),
@@ -317,6 +302,8 @@ impl AST {
 
         code_block.set_statements_from_code_block();
         code_block.parse();
+
+        info("Generated AST successfully.");
 
         let result = code_block.execute(&mut self.scope);
         match result {

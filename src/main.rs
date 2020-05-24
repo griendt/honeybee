@@ -33,9 +33,10 @@ fn run(file: String) {
     let mut ast = AST::new();
     lexer.tokens.iter_mut().for_each(|token| ast.parse_token(token));
 
-    info("Pre-AST parse result was:");
+    info("Token parse result was:");
     lexer.pretty_print_tokens();
 
+    info("Generating AST...");
     ast.build_and_run(lexer.tokens);
 
     info("Global state after execution:");
