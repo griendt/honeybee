@@ -1,8 +1,11 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::option::Option::None;
 
-use crate::token::{Token, TokenCategory, TokenType};
+use crate::ast::StatementContent::Assignment;
 use crate::io::{error, info};
+use crate::token::{Token, TokenCategory, TokenType};
+use crate::token::TokenType::AssignmentOperator;
 
 #[derive(Debug)]
 pub struct AST {
@@ -15,79 +18,180 @@ pub enum HoneyValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum StatementType {
-    Error,
-    Leaf,
-    Assignment,
-    CodeBlock,
+pub struct CodeBlock {
+    pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignmentStatement {
+    // We should expand on this to allow multi-token variable assignment,
+    // such as foo.bar
+    variable: String,
+
+    value: Box<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CodeBlockStatement {
+    statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StatementContent {
+    // These contents are leaves (no sub-statements)
+    None,
+    Leaf(LeafStatement),
+
+    // These contents have sub-statements
+    Assignment(AssignmentStatement),
+    CodeBlock(CodeBlockStatement),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LeafStatement {
+    VariableName(String),
+    HoneyValue(HoneyValue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Statement {
     pub tokens: Vec<Token>,
-    pub _type: Option<StatementType>,
+    pub content: StatementContent,
 }
 
 impl Statement {
-
     pub fn from_tokens(tokens: Vec<Token>) -> Self {
-        let mut statement = Statement { tokens: vec![], _type: None };
+        let mut statement = Statement { tokens: vec![], content: StatementContent::None };
         statement.tokens = tokens;
-        statement._type = Some(statement.determine_type());
+        statement.set_content();
         statement
     }
 
-    pub fn determine_type(&self) -> StatementType {
-        if self.tokens.len() == 1 {
-            return StatementType::Leaf;
-        }
-
+    pub fn set_content(&mut self) -> () {
         // This is not a great check: we turn a statement into an assignment if it contains
         // an assignment operator. This, of course, doesn't work well in case this operator
         // has a lower precedence than some other (for example because it's in parantheses).
-        if !(self.tokens.clone().into_iter()
-            .filter(|token| token._type == Some(TokenType::AssignmentOperator))
-            .collect::<Vec<Token>>()
-            .is_empty())
+        match self.tokens
+            .iter()
+            .position(|token| token._type == Some(AssignmentOperator))
         {
-            return StatementType::Assignment;
-        }
+            Some(operator_position) => {
+                // This is actually a bad assertion: only simple expressions pass this (e.g.
+                // assignments where the left hand side is a single token). But for now this
+                // is the only kind of assignment we will support.
+                assert_eq!(operator_position, 1);
 
-        StatementType::Error
+                self.content = Assignment(AssignmentStatement {
+                    variable: self.tokens[0].value.clone(),
+                    value: Box::from(
+                        Statement::from_tokens(
+                            self.tokens.clone()[operator_position + 1..].to_owned()
+                        )
+                    ),
+                });
+            }
+            None => {
+                // A naive check to look at whether we are dealing with a singular value:
+                // a token and a semicolon. We should improve this.
+                if self.tokens.len() == 2 {
+                    self.content = match self.tokens[0].category {
+                        TokenCategory::Identifier => StatementContent::Leaf(
+                            LeafStatement::VariableName(self.tokens[0].value.clone())
+                        ),
+                        TokenCategory::Literal => {
+                            StatementContent::Leaf(
+                                LeafStatement::HoneyValue(
+                                    // Here we assume right now that Number is the only possible
+                                    // literal value. Therefore we try to parse it as a number.
+                                    // Of course we should make an additional check here on the
+                                    // type of the literal and create the appropriate HoneyValue!
+                                    match self.tokens[0].value.parse::<u64>() {
+                                        Ok(x) => HoneyValue::Number(x),
+                                        Err(_) => panic!("Could not cast '{}' to u64", self.tokens[0].value),
+                                    }
+                                )
+                            )
+                        }
+                        _ => panic!(
+                            "Unprocessable token category found in single-token statement: '{:#?}'",
+                            self.tokens[0].category
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn parse(&mut self) {
+        match self.content.borrow() {
+            // Leaves need no further parsing
+            StatementContent::Leaf(_) => {},
+            StatementContent::CodeBlock(code_block_statement) => {
+                let mut code_block_statement = code_block_statement.clone();
+                for statement in code_block_statement.statements.iter_mut() {
+                    statement.parse();
+                }
+
+                self.content = StatementContent::CodeBlock(code_block_statement);
+            },
+            StatementContent::Assignment(assignment_statement) => {
+                // Assignments have a value (=r.h.s.) which is composed of a statement on its own.
+                // We should parse that statement as well.
+                let mut assignment_statement = assignment_statement.clone();
+                assignment_statement.value.parse();
+                self.content = StatementContent::Assignment(assignment_statement);
+            },
+            _ => unimplemented!("Cannot parse this content type: '{:#?}'", self.content),
+        }
     }
 
     pub fn execute(&self, scope: &mut HashMap<String, HoneyValue>)
-        -> Result<Option<HoneyValue>, String> {
+                   -> Result<Option<HoneyValue>, String>
+    {
         // We should probably require a context or scope for the statement as an argument.
         // Right now we won't care about that and just execute whatever is inside the statement
         // as if it were the only part of the entire program.
-        match self._type {
-            Some(StatementType::CodeBlock) => {
-                // If we're dealing with a code block, split it
-                // into sub-statements, and execute each of them.
+        match self.content.borrow() {
+            StatementContent::CodeBlock(code_block_statement) => {
+                let mut return_value: Result<Option<HoneyValue>, String> = Ok(None);
+
+                let code_block_statement = code_block_statement.clone();
+
+                // Execute each of the sub-statements.
                 // Note that this is a recursive call!
-                let statements = self.get_statements_from_code_block();
-                let mut return_value = Ok(None);
-                for statement in statements {
+                for statement in code_block_statement.statements {
                     return_value = statement.execute(scope);
+
+                    // If a statement leads to an error, abort the rest of
+                    // the code block and return the error right away.
+                    match return_value {
+                        Ok(_) => (),
+                        Err(e) => return Err(e),
+                    };
                 }
 
                 return_value
+            }
+            StatementContent::Assignment(_) => self.execute_assignment(scope),
+
+            // The var is not on the left side of an assignment, because if it were, it would have
+            // been consumed in the execute_assignment function. Therefore we should be able
+            // to expand the variable to its value.
+            StatementContent::Leaf(LeafStatement::VariableName(name)) =>
+                match scope.get(name) {
+                Some(x) => Ok(Some(x.clone())),
+                None => panic!("Undefined variable: {}", name),
             },
-            Some(StatementType::Assignment) => self.execute_assignment(scope),
-            Some(StatementType::Leaf) => Ok(Some(self.tokens[0].to_honey_value(scope))),
 
             // We could, in theory, determine the type on the go, but this should never
             // be needed. Therefore we will explicitly panic because it implies bad
             // implementation at some point during the parsing of the tokens.
-            None => panic!("Cannot execute statement whose type was not evaluated"),
-
-            _ => panic!("Unsupported statement type: {:?}", self._type)
+            _ => panic!("Cannot execute statement whose content type was not evaluated"),
         }
     }
 
     fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>)
-        -> Result<Option<HoneyValue>, String>
+                          -> Result<Option<HoneyValue>, String>
     {
         // An assignment consists of two parts: the left side, which should be an identifier,
         // and the right side, which should be an expression that reduces to a single value.
@@ -123,7 +227,7 @@ impl Statement {
             4 => Ok(Some(self.tokens[2].to_honey_value(scope))),
             _ => {
                 Statement::from_tokens(self.tokens[2..].to_owned())
-                .execute(scope)
+                    .execute(scope)
             }
         };
 
@@ -132,35 +236,35 @@ impl Statement {
                 let value_to_insert = value.borrow().as_ref().unwrap().unwrap();
                 scope.insert(self.tokens[0].value.clone(), value_to_insert);
                 value
-            },
+            }
             Err(_) => value,
         }
     }
 
     // A CodeBlock-type statement contains sub-statements.
-    // This method splits that statement into a vector of its sub-statements.
-    fn get_statements_from_code_block(&self) -> Vec<Statement> {
-        assert_eq!(self._type, Some(StatementType::CodeBlock));
+    // This method splits that statement into a vector of its sub-statements,
+    // and sets the content to these statements.
+    fn set_statements_from_code_block(&mut self) -> () {
+        match self.content {
+            StatementContent::CodeBlock(_) => (),
+            _ => panic!("Trying to parse a non-block statement as a code block"),
+        };
 
         let mut statements: Vec<Statement> = vec![];
-        let statement = &mut Statement { tokens: vec![], _type: None };
+        let statement = &mut Statement { tokens: vec![], content: StatementContent::None };
         for token in self.tokens.iter() {
             statement.tokens.push(token.clone());
             if token._type == Some(TokenType::StatementSeparator) {
-                statement._type = Some(statement.determine_type());
+                statement.set_content();
                 statements.push((&*statement).clone());
                 statement.tokens = vec!();
             }
         }
 
-        statements
+        self.content = StatementContent::CodeBlock(CodeBlockStatement { statements });
     }
 }
 
-#[derive(Debug)]
-pub struct CodeBlock {
-    pub statements: Vec<Statement>,
-}
 
 impl AST {
     pub fn new() -> AST {
@@ -200,8 +304,11 @@ impl AST {
         // When executing the code, the tree will expand into sub-statements.
         let code_block = &mut Statement {
             tokens: tokens.clone(),
-            _type: Some(StatementType::CodeBlock)
+            content: StatementContent::CodeBlock(CodeBlockStatement { statements: vec![] }),
         };
+
+        code_block.set_statements_from_code_block();
+        code_block.parse();
 
         let result = code_block.execute(&mut self.scope);
         match result {

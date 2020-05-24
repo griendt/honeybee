@@ -2,6 +2,9 @@ use std::fmt;
 use std::fmt::Formatter;
 use crate::ast::HoneyValue;
 use std::collections::HashMap;
+use std::borrow::Borrow;
+use crate::io::error;
+use std::process::exit;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenCategory {
@@ -36,7 +39,7 @@ impl fmt::Display for TokenType {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     // The value of the token as it is present in the source code.
     pub(crate) value: String,
@@ -69,6 +72,20 @@ impl Token {
         }
     }
 
+    fn print_error(&self, message: String) -> () {
+        let full_message = format!("{} at line {} column {}{}",
+            message,
+            self.line,
+            self.column,
+            match self.file.borrow() {
+                Some(file) => format!(" in {}", file),
+                None => String::from(""),
+            }
+        );
+
+        error(full_message.as_str());
+    }
+
     pub fn to_honey_value(&self, scope: &HashMap<String, HoneyValue>) -> HoneyValue {
         match self._type {
             Some(TokenType::NumericLiteral) => {
@@ -79,7 +96,10 @@ impl Token {
             },
             Some(TokenType::VariableName) => match scope.get(self.value.as_str()) {
                 Some(x) => x.clone(),
-                None => panic!("Undefined variable: {}", self.value),
+                None => {
+                    self.print_error(format!("Undefined variable: {}", self.value));
+                    exit(1);
+                },
             },
             _ => panic!("Could not convert token with type {:#?} to HoneyValue", self._type.unwrap()),
         }
