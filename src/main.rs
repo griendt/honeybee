@@ -1,7 +1,7 @@
 #![feature(core_panic)]
 
 use std::{env, fs};
-use crate::io::info;
+use crate::io::{info, error};
 use crate::lexer::Lexer;
 use crate::ast::AST;
 
@@ -27,20 +27,29 @@ fn run(file: String) {
 
     lexer.finish();
 
-    info("Lexer result:");
-    lexer.pretty_print_tokens();
+    info("Finished lexing");
+    // info("Lexer result:");
+    // lexer.pretty_print_tokens();
 
     let mut ast = AST::new();
     lexer.tokens.iter_mut().for_each(|token| ast.parse_token(token));
 
-    info("Token parse result was:");
-    lexer.pretty_print_tokens();
+    info("Finished token parsing");
+    // info("Token parse result was:");
+    // lexer.pretty_print_tokens();
 
     info("Generating AST...");
-    ast.build_and_run(lexer.tokens);
-
-    info("Global state after execution:");
-    println!("{:?}", ast.scope)
+    match ast.build_and_run(lexer.tokens) {
+        Ok(_) => {
+            info("Global state after execution:");
+            println!("{:?}", ast.scope);
+        },
+        Err(err) => {
+            error(format!("  {}\n  Execution failed.", err).as_str());
+            info("Dump of state:");
+            println!("  {:?}", ast.scope);
+        }
+    }
 }
 
 fn main() {

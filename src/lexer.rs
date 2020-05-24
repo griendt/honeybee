@@ -36,7 +36,7 @@ enum State {
     None,
     // Parse error
     Error,
-    // Name of a variable or a function
+    // Name of a variable, keyword or a function
     Identifier,
     // Symbols that represent operators
     Operator,
@@ -146,6 +146,7 @@ impl Lexer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn pretty_print_tokens(&self) {
         for token in self.tokens.iter() {
             println!(

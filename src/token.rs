@@ -3,7 +3,6 @@ use std::fmt::Formatter;
 use crate::ast::HoneyValue;
 use std::collections::HashMap;
 use std::borrow::Borrow;
-use crate::io::error;
 use std::process::exit;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -25,6 +24,7 @@ impl fmt::Display for TokenCategory {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TokenType {
+    Keyword,
     VariableName,
     AssignmentOperator,
     SumOperator,
@@ -72,7 +72,7 @@ impl Token {
         }
     }
 
-    pub fn print_error(&self, message: String) -> () {
+    pub fn make_error(&self, message: String) -> String {
         let full_message = format!("{} at line {} column {}{}",
             message,
             self.line,
@@ -83,7 +83,7 @@ impl Token {
             }
         );
 
-        error(full_message.as_str());
+        full_message
     }
 
     pub fn to_honey_value(&self, scope: &HashMap<String, HoneyValue>) -> HoneyValue {
@@ -97,7 +97,7 @@ impl Token {
             Some(TokenType::VariableName) => match scope.get(self.value.as_str()) {
                 Some(x) => x.clone(),
                 None => {
-                    self.print_error(format!("Undefined variable: {}", self.value));
+                    self.make_error(format!("Undefined variable: {}", self.value));
                     exit(1);
                 },
             },
