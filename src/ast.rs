@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::option::Option::None;
 use std::process::exit;
 
-use crate::ast::StatementContent::Declaration;
+use crate::ast::StatementContent::{Declaration, Leaf};
 use crate::io::{error, info};
 use crate::token::{Token, TokenCategory, TokenType};
 use crate::token::TokenType::DeclarationOperator;
@@ -81,8 +81,7 @@ impl Statement {
                     );
                     return Err(error);
                 }
-            }
-            else {
+            } else {
                 // We can probably improve on this error. We are trying to parse an assignment,
                 // but the equals sign isn't the second. We have little clue as to what
                 // went wrong. Probably an assignment to a variable that isn't one token?
@@ -111,12 +110,18 @@ impl Statement {
                 Ok(statement) => {
                     self.content = Declaration(
                         self.tokens[pos - 1].value.clone(),
-                        Box::from(statement)
+                        Box::from(statement),
                     );
                     // self.tokens = vec![];   // We can now clear the tokens from memory.
                 }
                 Err(error) => return Err(error),
             };
+        }
+
+        // This is a really poor check to see if we are dealing with an elementary
+        // expression (a single token)... but we can safely turn this into a leaf.
+        if self.tokens.len() == 2 {
+            self.content = Leaf(self.tokens[0].value.clone());
         }
 
         Ok(())
@@ -353,7 +358,11 @@ mod test {
         );
 
         let ast = AST::new();
-        tokens.iter_mut().for_each(|token| ast.parse_token(token));
+        tokens.iter_mut().for_each(|token|
+            token._type = Option::from(ast.parse_token(token)
+                .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+            )
+        );
 
         assert_eq!(tokens[0]._type, Some(TokenType::VariableName));
         assert_eq!(tokens[1]._type, Some(TokenType::DeclarationOperator));
@@ -382,7 +391,12 @@ mod test {
 
         let mut ast = AST::new();
 
-        tokens.iter_mut().for_each(|token| ast.parse_token(token));
+        tokens.iter_mut().for_each(|token|
+            token._type = Option::from(ast.parse_token(token)
+                .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+            )
+        );
+
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(3)));
@@ -395,16 +409,44 @@ mod test {
     }
 
     #[test]
-    fn it_allows_variable_redefinition() {
+    fn it_accepts_declaration() {
         // Corresponds to the following source code:
-        // x=3;x=4;
+        // x:=3;
         let mut tokens: Vec<Token> = vec!(
             Token::new()
                 .set_category(TokenCategory::Identifier)
                 .set_value(String::from("x")),
             Token::new()
                 .set_category(TokenCategory::Operator)
-                .set_value(String::from("=")),
+                .set_value(String::from(":=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("3")),
+        );
+        let mut ast = AST::new();
+
+        tokens.iter_mut().for_each(|token|
+            token._type = Option::from(ast.parse_token(token)
+                .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+            )
+        );
+
+        ast.build_and_run(tokens);
+
+        assert_eq!(ast.scope.get("x"), Some(&Number(3)));
+    }
+
+    #[test]
+    fn it_allows_variable_assignment_after_declaration() {
+        // Corresponds to the following source code:
+        // x:=3;x=4;
+        let mut tokens: Vec<Token> = vec!(
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from(":=")),
             Token::new()
                 .set_category(TokenCategory::Literal)
                 .set_value(String::from("3")),
@@ -427,10 +469,59 @@ mod test {
 
         let mut ast = AST::new();
 
-        tokens.iter_mut().for_each(|token| ast.parse_token(token));
+        tokens.iter_mut().for_each(|token|
+            token._type = Option::from(ast.parse_token(token)
+                .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+            )
+        );
+
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
+    }
+
+    #[test]
+    fn it_rejects_redeclaration() {
+        // Corresponds to the source code:
+        // x:=3;x:=4;
+        let mut tokens: Vec<Token> = vec!(
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from(":=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("3")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+            Token::new()
+                .set_category(TokenCategory::Identifier)
+                .set_value(String::from("x")),
+            Token::new()
+                .set_category(TokenCategory::Operator)
+                .set_value(String::from(":=")),
+            Token::new()
+                .set_category(TokenCategory::Literal)
+                .set_value(String::from("4")),
+            Token::new()
+                .set_category(TokenCategory::Separator)
+                .set_value(String::from(";")),
+        );
+
+        let mut ast = AST::new();
+
+        tokens.iter_mut().for_each(|token|
+            token._type = Option::from(ast.parse_token(token)
+                .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+            )
+        );
+
+        let result = ast.build_and_run(tokens);
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -444,7 +535,7 @@ mod test {
                 .set_value(String::from("x")),
             Token::new()
                 .set_category(TokenCategory::Operator)
-                .set_value(String::from("=")),
+                .set_value(String::from(":=")),
             Token::new()
                 .set_category(TokenCategory::Literal)
                 .set_value(String::from("3")),
@@ -456,7 +547,7 @@ mod test {
                 .set_value(String::from("y")),
             Token::new()
                 .set_category(TokenCategory::Operator)
-                .set_value(String::from("=")),
+                .set_value(String::from(":=")),
             Token::new()
                 .set_category(TokenCategory::Literal)
                 .set_value(String::from("4")),
@@ -477,7 +568,12 @@ mod test {
                 .set_value(String::from(";")),
         );
 
-        tokens.iter_mut().for_each(|token| ast.parse_token(token));
+        tokens.iter_mut().for_each(|token|
+            token._type = Option::from(ast.parse_token(token)
+                .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+            )
+        );
+
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
@@ -494,7 +590,7 @@ mod test {
                 .set_value(String::from("x")),
             Token::new()
                 .set_category(TokenCategory::Operator)
-                .set_value(String::from("=")),
+                .set_value(String::from(":=")),
             Token::new()
                 .set_category(TokenCategory::Literal)
                 .set_value(String::from("3")),
@@ -506,7 +602,7 @@ mod test {
                 .set_value(String::from("y")),
             Token::new()
                 .set_category(TokenCategory::Operator)
-                .set_value(String::from("=")),
+                .set_value(String::from(":=")),
             Token::new()
                 .set_category(TokenCategory::Literal)
                 .set_value(String::from("4")),
@@ -540,7 +636,12 @@ mod test {
         );
 
         let mut ast = AST::new();
-        tokens.iter_mut().for_each(|token| ast.parse_token(token));
+        tokens.iter_mut().for_each(|token|
+            token._type = Option::from(ast.parse_token(token)
+                .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+            )
+        );
+
         ast.build_and_run(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(5)));
