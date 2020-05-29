@@ -26,7 +26,7 @@ impl fmt::Display for TokenCategory {
 pub enum TokenType {
     Keyword,
     VariableName,
-    AssignmentOperator,
+    DeclarationOperator,
     SumOperator,
     NumericLiteral,
     StatementSeparator,

@@ -17,7 +17,8 @@ const ENCAPSULATORS_RIGHT: [char; 4] = [
     '>',
 ];
 
-const OPERATORS: [char; 5] = [
+const OPERATORS: [char; 6] = [
+    ':',
     '=',
     '!',
     '-',

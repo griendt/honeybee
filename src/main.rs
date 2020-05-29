@@ -32,7 +32,11 @@ fn run(file: String) {
     // lexer.pretty_print_tokens();
 
     let mut ast = AST::new();
-    lexer.tokens.iter_mut().for_each(|token| ast.parse_token(token));
+    lexer.tokens.iter_mut().for_each(|token|
+        token._type = Option::from(ast.parse_token(token)
+            .expect(format!("Syntax error when parsing token {:#?}", token).as_str())
+        )
+    );
 
     info("Finished token parsing");
     // info("Token parse result was:");

@@ -3,14 +3,12 @@ use std::collections::HashMap;
 use std::option::Option::None;
 use std::process::exit;
 
-use crate::ast::StatementContent::Assignment;
+use crate::ast::StatementContent::Declaration;
 use crate::io::{error, info};
 use crate::token::{Token, TokenCategory, TokenType};
-use crate::token::TokenType::AssignmentOperator;
+use crate::token::TokenType::DeclarationOperator;
 
-const KEYWORDS: [&str; 1] = [
-    "let"
-];
+const KEYWORDS: [&str; 0] = [];
 
 #[derive(Debug)]
 pub struct AST {
@@ -23,43 +21,26 @@ pub enum HoneyValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CodeBlock {
-    pub statements: Vec<Statement>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AssignmentStatement {
-    // We should expand on this to allow multi-token variable assignment,
-    // such as foo.bar
-    variable: String,
-
-    value: Box<Statement>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CodeBlockStatement {
-    statements: Vec<Statement>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum StatementContent {
-    // These contents are leaves (no sub-statements)
+    // Uninitialized
     None,
-    Leaf(LeafStatement),
 
-    // These contents have sub-statements
-    Assignment(AssignmentStatement),
-    CodeBlock(CodeBlockStatement),
-}
+    // We should expand on this type to allow multi-token variable assignment,
+    // such as foo.bar. Now the left side is just a String.
+    Leaf(String),
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum LeafStatement {
-    VariableName(String),
-    HoneyValue(HoneyValue),
+    // A declaration consists of a variable name (String) and a statement (actually an expression,
+    // but we don't have those yet) that evaluates to a value upon execution.
+    Declaration(String, Box<Statement>),
+
+    // A CodeBlock a a vector of statements. Perhaps we will need to box these.
+    CodeBlock(Vec<Statement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Statement {
+    // A statement really should be just its content, but for debug purposes we
+    // make it a struct that also has the tokens.
     pub tokens: Vec<Token>,
     pub content: StatementContent,
 }
@@ -78,106 +59,64 @@ impl Statement {
         // This is not a great check: we turn a statement into an assignment if it contains
         // an assignment operator. This, of course, doesn't work well in case this operator
         // has a lower precedence than some other (for example because it's in parentheses).
-        match self.tokens
+        let declaration_position = self.tokens
             .iter()
-            .position(|token| token._type == Some(AssignmentOperator))
-        {
-            Some(operator_position) => {
-                // This is actually a bad assertion: only simple expressions pass this (e.g.
-                // assignments where the left hand side is a single token preceded by a "let").
-                // But for now this is the only kind of assignment we will support.
-
-                if operator_position == 1 {
-                    // This means the equals sign is the second token. If the first token was
-                    // the keyword "let", then the variable name is missing. If the first token
-                    // is something else, the user forgot to add the "let" keyword.
-                    // We could check explicitly for the "let" keyword in the match statement
-                    // that this is a clause of, but it may lead to less clear error messages?
-
-                    // FIXME: This is not actually necessarily an error! We can definitely not
-                    //  throw a syntax error here! "let" is only required to declare new variables.
-                    //  we should not require it to set an existing variable to some other value!
-                    let error = match self.tokens[0]._type == Some(TokenType::Keyword) &&
-                        self.tokens[0].value == String::from("let")
-                    {
-                        true => self.tokens[1].make_error(
-                            format!(
-                                "Syntax error: expected variable, found: '{}'",
-                                String::from(self.tokens[1].value.clone())
-                            )
-                        ),
-                        false => self.tokens[0].make_error(
-                            format!(
-                                "Syntax error: unexpected token '{}', perhaps you forgot to prepend with 'let'?",
-                                String::from(self.tokens[0].value.clone())
-                            )
-                        )
-                    };
-
-                    return Err(error);
-                }
-
-                if self.tokens[2]._type != Some(TokenType::AssignmentOperator) {
-                    let error = self.tokens[2].make_error(
-                        String::from(format!(
-                            "Syntax error: Unexpected token '{}', expected: '='",
-                            self.tokens[2].value)
+            .position(|token| token._type == Some(DeclarationOperator));
+        if declaration_position.is_some() {
+            let pos = declaration_position.unwrap();
+            // This is actually a bad assertion: only simple expressions pass this (e.g.
+            // declarations where the left hand side is a single token).
+            // But for now this is the only kind of declaration we will support.
+            if pos == 1 {
+                // Because we currently only support declaration to simple variables (1 token),
+                // this must imply we are dealing with a " x := value" type statement.
+                // We will not allow anything that is not a variable name.
+                if self.tokens[0]._type != Some(TokenType::VariableName)
+                {
+                    let error = self.tokens[0].make_error(
+                        format!(
+                            "Syntax error: expected a variable name, found: '{}'",
+                            String::from(self.tokens[0].value.clone())
                         )
                     );
                     return Err(error);
                 }
-
-                // Make sure that the left hand side is, indeed, a variable and not something
-                // else (such as a literal). Throw a syntax error otherwise.
-                if self.tokens[1].category == TokenCategory::Literal {
-                    let error = self.tokens[1].make_error(String::from("Syntax error: Cannot assign to literal"));
-                    return Err(error);
-                }
-
-                match Statement::from_tokens(
-                    self.tokens.clone()[operator_position + 1..]
-                        .to_owned()
-                ) {
-                    Ok(statement) => {
-                        self.content = Assignment(AssignmentStatement {
-                            variable: self.tokens[1].value.clone(),
-                            value: Box::from(statement),
-                        });
-                        // self.tokens = vec![];   // We can now clear the tokens from memory.
-                    }
-                    Err(error) => return Err(error),
-                };
             }
-            None => {
-                // A naive check to look at whether we are dealing with a singular value:
-                // a token and a semicolon. We should improve this.
-                if self.tokens.len() == 2 {
-                    self.content = match self.tokens[0].category {
-                        TokenCategory::Identifier => StatementContent::Leaf(
-                            LeafStatement::VariableName(self.tokens[0].value.clone())
-                        ),
-                        TokenCategory::Literal => {
-                            StatementContent::Leaf(
-                                LeafStatement::HoneyValue(
-                                    // Here we assume right now that Number is the only possible
-                                    // literal value. Therefore we try to parse it as a number.
-                                    // Of course we should make an additional check here on the
-                                    // type of the literal and create the appropriate HoneyValue!
-                                    match self.tokens[0].value.parse::<u64>() {
-                                        Ok(x) => HoneyValue::Number(x),
-                                        Err(_) => panic!("Could not cast '{}' to u64", self.tokens[0].value),
-                                    }
-                                )
-                            )
-                        }
-                        _ => panic!(
-                            "Unprocessable token category found in single-token statement: '{:#?}'",
-                            self.tokens[0].category
-                        )
-                    };
-                    self.tokens = vec![]; // We can now clear the tokens from memory.
-                }
+            else {
+                // We can probably improve on this error. We are trying to parse an assignment,
+                // but the equals sign isn't the second. We have little clue as to what
+                // went wrong. Probably an assignment to a variable that isn't one token?
+                let error = self.tokens[1].make_error(
+                    String::from(format!(
+                        "Syntax error: Unexpected token '{}', expected: '='",
+                        self.tokens[2].value)
+                    )
+                );
+                return Err(error);
             }
+
+            // Make sure that the left hand side is, indeed, a variable and not something
+            // else (such as a literal). Throw a syntax error otherwise.
+            if self.tokens[pos - 1].category == TokenCategory::Literal {
+                let error = self.tokens[pos - 1].make_error(
+                    String::from("Syntax error: Cannot assign to literal")
+                );
+                return Err(error);
+            }
+
+            match Statement::from_tokens(
+                self.tokens.clone()[pos + 1..]
+                    .to_owned()
+            ) {
+                Ok(statement) => {
+                    self.content = Declaration(
+                        self.tokens[pos - 1].value.clone(),
+                        Box::from(statement)
+                    );
+                    // self.tokens = vec![];   // We can now clear the tokens from memory.
+                }
+                Err(error) => return Err(error),
+            };
         }
 
         Ok(())
@@ -189,19 +128,22 @@ impl Statement {
             StatementContent::Leaf(_) => {}
             StatementContent::CodeBlock(code_block_statement) => {
                 let mut code_block_statement = code_block_statement.clone();
-                for statement in code_block_statement.statements.iter_mut() {
+                for statement in code_block_statement.iter_mut() {
                     statement.parse();
                 }
 
                 self.content = StatementContent::CodeBlock(code_block_statement);
             }
-            StatementContent::Assignment(assignment_statement) => {
+            StatementContent::Declaration(name, statement) => {
                 // Assignments have a value (=r.h.s.) which is composed of a statement on its own.
                 // We should parse that statement as well.
-                let mut assignment_statement = assignment_statement.clone();
-                assignment_statement.value.parse();
-                self.content = StatementContent::Assignment(assignment_statement);
+                let mut assignment_statement = statement.clone();
+                assignment_statement.parse();
+                self.content = StatementContent::Declaration(name.parse().unwrap(), assignment_statement);
             }
+
+            // Noop. TODO: Is this OK? It might allow for some strange syntax in sub-statements.
+            StatementContent::None => {}
             _ => unimplemented!("Cannot parse this content type: '{:#?}'", self.content),
         }
     }
@@ -220,7 +162,7 @@ impl Statement {
 
                 // Execute each of the sub-statements.
                 // Note that this is a recursive call!
-                for statement in code_block_statement.statements {
+                for statement in code_block_statement {
                     return_value = statement.execute(scope);
 
                     // If a statement leads to an error, abort the rest of
@@ -233,12 +175,12 @@ impl Statement {
 
                 return_value
             }
-            StatementContent::Assignment(_) => self.execute_assignment(scope),
+            StatementContent::Declaration(_, _) => self.execute_assignment(scope),
 
             // The var is not on the left side of an assignment, because if it were, it would have
             // been consumed in the execute_assignment function. Therefore we should be able
             // to expand the variable to its value.
-            StatementContent::Leaf(LeafStatement::VariableName(name)) =>
+            StatementContent::Leaf(name) =>
                 match scope.get(name) {
                     Some(x) => Ok(Some(x.clone())),
                     None => {
@@ -257,22 +199,15 @@ impl Statement {
     fn execute_assignment(&self, scope: &mut HashMap<String, HoneyValue>)
                           -> Result<Option<HoneyValue>, String>
     {
-        assert_eq!(self.tokens[0]._type, Some(TokenType::Keyword));
-        assert_eq!(self.tokens[0].value, "let");
-        assert_eq!(self.tokens[1]._type, Some(TokenType::VariableName));
-        assert_eq!(self.tokens[2]._type, Some(TokenType::AssignmentOperator));
-        assert!([TokenType::VariableName, TokenType::NumericLiteral, TokenType::Keyword]
-            .contains(&self.tokens[3]._type.unwrap()));
 
         // This is probably not the best check to ask whether we are dealing with an elementary
         // expression... the left- and right hand sides should probably already be split before
         // we even reach this part of the code, and we should ask of each side whether they are
         // elementary (and if not, execute the sub-expressions first). But right now we are only
         // supporting elementary expressions.
-
         let value_result = match self.tokens.len() {
             // An elementary assignment: the right-hand side is a single token
-            5 => Ok(Some(self.tokens[3].to_honey_value(scope))),
+            4 => Ok(Some(self.tokens[2].to_honey_value(scope))),
             _ => {
                 let statement_result = Statement::from_tokens(self.tokens[3..].to_owned());
                 match statement_result {
@@ -285,7 +220,7 @@ impl Statement {
         match value_result {
             Ok(_) => {
                 let value_to_insert = value_result.borrow().as_ref().unwrap().unwrap();
-                scope.insert(self.tokens[1].value.clone(), value_to_insert);
+                scope.insert(self.tokens[0].value.clone(), value_to_insert);
                 value_result
             }
             Err(_) => value_result,
@@ -316,7 +251,7 @@ impl Statement {
             }
         }
 
-        self.content = StatementContent::CodeBlock(CodeBlockStatement { statements });
+        self.content = StatementContent::CodeBlock(statements);
         Ok(())
     }
 }
@@ -328,36 +263,36 @@ impl AST {
         AST { scope }
     }
 
-    pub fn parse_token(&self, token: &mut Token) -> () {
+    pub fn parse_token(&self, token: &mut Token) -> Result<TokenType, String> {
         // Depending on the context, a token may mean different things.
         // We will assume that this context is stored in self.
         // Currently we are not using any context, but we definitely will in the future!
 
-        token._type = match (token.category.borrow(), token.value.borrow()) {
+        let token_type = match (token.category.borrow(), token.value.borrow()) {
             // If we are dealing with a semicolon separator, it's a statement separator.
-            (TokenCategory::Separator, ";") => Option::from(TokenType::StatementSeparator),
-
-            (TokenCategory::Identifier, "let") => Option::from(TokenType::Keyword),
+            (TokenCategory::Separator, ";") => TokenType::StatementSeparator,
 
             // Right now we assume all identifiers that aren't keywards
             // are variables. We will have to make sure all built-in keywords and functions
             // are matched. Obviously this is not very robust because user-defined
             // functions (for example) should not be parsed as variables either...
             (TokenCategory::Identifier, value) => match KEYWORDS.contains(&value) {
-                true => Option::from(TokenType::Keyword),
-                false => Option::from(TokenType::VariableName),
+                true => TokenType::Keyword,
+                false => TokenType::VariableName,
             },
 
-            (TokenCategory::Operator, "=") => Option::from(TokenType::AssignmentOperator),
-            (TokenCategory::Operator, "+") => Option::from(TokenType::SumOperator),
+            (TokenCategory::Operator, ":=") => TokenType::DeclarationOperator,
+            (TokenCategory::Operator, "+") => TokenType::SumOperator,
 
             // Right now the only literal we will support is the numeric one.
             // Obviously we also need to support other literals such as booleans, strings,
             // null, and so forth. We should check the value for this rather than passing
             // the underscore _ as a wildcard!
-            (TokenCategory::Literal, _) => Option::from(TokenType::NumericLiteral),
-            _ => panic!("Unsupported combination of token category and value: {} {}", token.category, token.value),
+            (TokenCategory::Literal, _) => TokenType::NumericLiteral,
+            _ => return Err(format!("Unsupported combination of token category and value: {} {}", token.category, token.value)),
         };
+
+        Ok(token_type)
     }
 
     pub fn build_and_run(&mut self, tokens: Vec<Token>) -> Result<Option<HoneyValue>, String> {
@@ -366,7 +301,7 @@ impl AST {
         // Then we will parse the code block, which in turn will parse its sub-statements.
         let code_block = &mut Statement {
             tokens: tokens.clone(),
-            content: StatementContent::CodeBlock(CodeBlockStatement { statements: vec![] }),
+            content: StatementContent::CodeBlock(vec![]),
         };
 
         match code_block.set_statements_from_code_block() {
@@ -377,6 +312,7 @@ impl AST {
         code_block.parse();
 
         info(format!("Generated AST successfully").as_str());
+        info(format!("{:#?}", code_block).as_str());
 
         let result = code_block.execute(&mut self.scope);
         match result.clone() {
@@ -420,7 +356,7 @@ mod test {
         tokens.iter_mut().for_each(|token| ast.parse_token(token));
 
         assert_eq!(tokens[0]._type, Some(TokenType::VariableName));
-        assert_eq!(tokens[1]._type, Some(TokenType::AssignmentOperator));
+        assert_eq!(tokens[1]._type, Some(TokenType::DeclarationOperator));
         assert_eq!(tokens[2]._type, Some(TokenType::NumericLiteral));
         assert_eq!(tokens[3]._type, Some(TokenType::StatementSeparator));
     }
