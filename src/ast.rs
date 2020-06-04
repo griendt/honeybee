@@ -300,7 +300,7 @@ impl AST {
         Ok(token_type)
     }
 
-    pub fn build_and_run(&mut self, tokens: Vec<Token>) -> Result<Option<HoneyValue>, String> {
+    pub fn parse_ast(&mut self, tokens: Vec<Token>) -> Result<Statement, String> {
         // Any program is really a code block. So, we will create a CodeBlock
         // type statement as the root node of the abstract syntax tree.
         // Then we will parse the code block, which in turn will parse its sub-statements.
@@ -317,18 +317,7 @@ impl AST {
         code_block.parse();
 
         info(format!("Generated AST successfully").as_str());
-        info(format!("{:#?}", code_block).as_str());
-
-        let result = code_block.execute(&mut self.scope);
-        match result.clone() {
-            Ok(Some(value)) => info(format!(
-                "Program executed successfully with return value: {:?}", value
-            ).as_str()),
-            Ok(None) => info("Program executed successfully with no return value"),
-            Err(e) => error(format!("Program failed with error: {}", e).as_str())
-        };
-
-        result
+        Ok(code_block.to_owned())
     }
 }
 
@@ -397,7 +386,7 @@ mod test {
             )
         );
 
-        ast.build_and_run(tokens);
+        ast.parse_ast(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(3)));
     }
@@ -431,7 +420,7 @@ mod test {
             )
         );
 
-        ast.build_and_run(tokens);
+        ast.parse_ast(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(3)));
     }
@@ -475,7 +464,7 @@ mod test {
             )
         );
 
-        ast.build_and_run(tokens);
+        ast.parse_ast(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
     }
@@ -519,7 +508,7 @@ mod test {
             )
         );
 
-        let result = ast.build_and_run(tokens);
+        let result = ast.parse_ast(tokens);
 
         assert!(result.is_err());
     }
@@ -574,7 +563,7 @@ mod test {
             )
         );
 
-        ast.build_and_run(tokens);
+        ast.parse_ast(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(4)));
         assert_eq!(ast.scope.get("y"), Some(&Number(4)));
@@ -642,7 +631,7 @@ mod test {
             )
         );
 
-        ast.build_and_run(tokens);
+        ast.parse_ast(tokens);
 
         assert_eq!(ast.scope.get("x"), Some(&Number(5)));
         assert_eq!(ast.scope.get("y"), Some(&Number(4)));

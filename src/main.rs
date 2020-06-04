@@ -1,14 +1,15 @@
-#![feature(core_panic)]
-
 use std::{env, fs};
 use crate::io::{info, error};
 use crate::lexer::Lexer;
 use crate::ast::AST;
+use crate::bytecode::BytecodeGenerator;
 
 mod lexer;
 mod io;
 mod token;
 mod ast;
+mod bytecode;
+mod llvm;
 
 fn run(file: String) {
 
@@ -43,17 +44,13 @@ fn run(file: String) {
     // lexer.pretty_print_tokens();
 
     info("Generating AST...");
-    match ast.build_and_run(lexer.tokens) {
-        Ok(_) => {
-            info("Global state after execution:");
-            println!("{:?}", ast.scope);
-        },
-        Err(err) => {
-            error(format!("  {}\n  Execution failed.", err).as_str());
-            info("Dump of state:");
-            println!("  {:?}", ast.scope);
-        }
-    }
+    let code_block = match ast.parse_ast(lexer.tokens) {
+        Ok(code_block) => code_block,
+        Err(e) => panic!(e),
+    };
+    
+    let bytecode = BytecodeGenerator::generate(&code_block);
+    llvm::compile(bytecode);
 }
 
 fn main() {
