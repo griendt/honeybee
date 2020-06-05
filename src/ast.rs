@@ -4,7 +4,7 @@ use std::option::Option::None;
 use std::process::exit;
 
 use crate::ast::StatementContent::{Declaration, Leaf};
-use crate::io::{error, info};
+use crate::io::info;
 use crate::token::{Token, TokenCategory, TokenType};
 use crate::token::TokenType::DeclarationOperator;
 
@@ -25,9 +25,9 @@ pub enum StatementContent {
     // Uninitialized
     None,
 
-    // We should expand on this type to allow multi-token variable assignment,
-    // such as foo.bar. Now the left side is just a String.
-    Leaf(String),
+    // A lead is some elementary value. Note that we need the token
+    // category to distinguish between the string "x" and the variable with name "x".
+    Leaf(String, TokenCategory),
 
     // A declaration consists of a variable name (String) and a statement (actually an expression,
     // but we don't have those yet) that evaluates to a value upon execution.
@@ -121,7 +121,7 @@ impl Statement {
         // This is a really poor check to see if we are dealing with an elementary
         // expression (a single token)... but we can safely turn this into a leaf.
         if self.tokens.len() == 2 {
-            self.content = Leaf(self.tokens[0].value.clone());
+            self.content = Leaf(self.tokens[0].value.clone(), self.tokens[0].category.clone());
         }
 
         Ok(())
@@ -130,7 +130,7 @@ impl Statement {
     pub fn parse(&mut self) {
         match self.content.borrow() {
             // Leaves need no further parsing
-            StatementContent::Leaf(_) => {}
+            StatementContent::Leaf(_, _) => {}
             StatementContent::CodeBlock(code_block_statement) => {
                 let mut code_block_statement = code_block_statement.clone();
                 for statement in code_block_statement.iter_mut() {
@@ -185,7 +185,7 @@ impl Statement {
             // The var is not on the left side of an assignment, because if it were, it would have
             // been consumed in the execute_assignment function. Therefore we should be able
             // to expand the variable to its value.
-            StatementContent::Leaf(name) =>
+            StatementContent::Leaf(name, TokenCategory::Identifier) =>
                 match scope.get(name) {
                     Some(x) => Ok(Some(x.clone())),
                     None => {
@@ -316,7 +316,6 @@ impl AST {
 
         code_block.parse();
 
-        info(format!("Generated AST successfully").as_str());
         Ok(code_block.to_owned())
     }
 }
